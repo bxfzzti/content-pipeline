@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1080px; height: 1440px; background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%); font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px; position: relative; overflow: hidden; }
+  body::before { content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle at 30% 20%, rgba(255,107,107,0.08) 0%, transparent 50%), radial-gradient(circle at 70% 80%, rgba(78,205,196,0.06) 0%, transparent 50%); }
+  .title { font-size: 52px; font-weight: 900; text-align: center; margin-bottom: 60px; line-height: 1.4; position: relative; z-index: 1; text-shadow: 0 2px 20px rgba(0,0,0,0.5); }
+  .title .highlight { color: #ff6b6b; }
+  .vs-container { display: flex; gap: 30px; align-items: flex-start; position: relative; z-index: 1; }
+  .product { text-align: center; width: 380px; background: rgba(255,255,255,0.05); border-radius: 24px; padding: 40px 30px; border: 1px solid rgba(255,255,255,0.1); }
+  .product-name { font-size: 32px; font-weight: 700; margin-bottom: 12px; }
+  .product-price { font-size: 72px; font-weight: 900; color: #ff6b6b; line-height: 1; }
+  .product-unit { font-size: 22px; color: #888; margin-top: 4px; }
+  .vs { font-size: 80px; font-weight: 900; color: #ffd93d; text-shadow: 0 0 30px rgba(255,217,61,0.3); align-self: center; }
+  .points { margin-top: 24px; text-align: left; }
+  .point { font-size: 20px; color: #bbb; margin: 10px 0; line-height: 1.5; }
+  .point::before { content: "✓ "; color: #4ecdc4; font-weight: 700; }
+  .verdict { margin-top: 50px; font-size: 28px; color: #ffd93d; font-weight: 700; position: relative; z-index: 1; text-align: center; }
+  .watermark { position: absolute; bottom: 40px; font-size: 18px; color: rgba(255,255,255,0.3); letter-spacing: 2px; }
+</style>
+</head>
+<body>
+  <div class="title">L8 砍掉第三排<br><span class="highlight">反而更想买了？</span></div>
+  <div class="vs-container">
+    <div class="product">
+      <div class="product-name">理想 L8</div>
+      <div class="product-price">30</div>
+      <div class="product-unit">万元起（预估）</div>
+      <div class="points">
+        <div class="point">五座联排零重力</div>
+        <div class="point">800V全主动悬架</div>
+        <div class="point">四颗激光雷达</div>
+      </div>
+    </div>
+    <div class="vs">VS</div>
+    <div class="product">
+      <div class="product-name">理想 L9</div>
+      <div class="product-price">45</div>
+      <div class="product-unit">万元起</div>
+      <div class="points">
+        <div class="point">六座三代同堂</div>
+        <div class="point">800V全主动悬架</div>
+        <div class="point">5米2旗舰尺寸</div>
+      </div>
+    </div>
+  </div>
+  <div class="verdict">多花15万，你买的是「全家」还是「豪华」？</div>
+  <div class="watermark">村长不开车</div>
+</body>
+</html>

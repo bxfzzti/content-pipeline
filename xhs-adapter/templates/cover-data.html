@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1080px; height: 1440px; background: #0a0a0a; font-family: -apple-system, "PingFang SC", sans-serif; color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 100px; position: relative; }
+  .label { font-size: 22px; color: #888; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 30px; }
+  .big-number { font-size: 180px; font-weight: 900; color: #00d2ff; line-height: 1; text-shadow: 0 0 60px rgba(0,210,255,0.3); }
+  .unit { font-size: 48px; color: #666; margin-top: -10px; }
+  .context { font-size: 28px; color: #ccc; margin-top: 40px; text-align: center; line-height: 1.6; }
+  .context .red { color: #ff6b6b; }
+  .context .green { color: #4ecdc4; }
+  .detail { margin-top: 60px; display: flex; gap: 60px; }
+  .detail-item { text-align: center; }
+  .detail-num { font-size: 40px; font-weight: 800; color: #ffd93d; }
+  .detail-label { font-size: 18px; color: #888; margin-top: 8px; }
+  .watermark { position: absolute; bottom: 40px; font-size: 18px; color: rgba(255,255,255,0.2); }
+</style>
+</head>
+<body>
+  <div class="label">月销量</div>
+  <div class="big-number">2.2</div>
+  <div class="unit">万台</div>
+  <div class="context">蔚来ES8 连续5个月<br><span class="red">大型SUV销冠</span></div>
+  <div class="detail">
+    <div class="detail-item">
+      <div class="detail-num">29.88万</div>
+      <div class="detail-label">租电方案起售价</div>
+    </div>
+    <div class="detail-item">
+      <div class="detail-num">4000+</div>
+      <div class="detail-label">换电站</div>
+    </div>
+    <div class="detail-item">
+      <div class="detail-num">5年</div>
+      <div class="detail-label">免费换电</div>
+    </div>
+  </div>
+  <div class="watermark">村长不开车</div>
+</body>
+</html>

@@ -113,6 +113,20 @@ $ZVEC check_style "<draft_text>" "[topk]"
 
 **API 熬坑速查：** `templates/zvec-api-cheatsheet.md` — Doc 构造、Collection 打开、查询结果访问、Query API 的正确写法。
 
+**集成指南：** `references/zvec-integration.md` — 环境配置、CLI 命令、4 个 collection、流水线接入点、API 坑。
+
+**版本管理：** `references/github-versioning.md` — GitHub 仓库、发布流程、版本命名规则。仓库：https://github.com/bxfzzti/content-pipeline
+
+## zvec 知识库接入点
+
+| Agent | Step | 操作 |
+|-------|------|------|
+| screening-agent | 1.5 | `dedup` 选题去重（阈值 0.65） |
+| angle-selection | 0 | `search_angles` 搜历史角度 |
+| quality-agent | 0.5 | `check_style` 风格相似度 |
+| main-agent | 2/3 | `add_topic` / `add_angle` 存库 |
+| main-agent | 8 | `add_style` 发布后回写风格锚点 |
+
 ## 质检 Agent Prompt 模板
 
 三个质检 agent 共用同一份「零跑文章6条教训」检查清单，但各自检查不同阶段的产物。

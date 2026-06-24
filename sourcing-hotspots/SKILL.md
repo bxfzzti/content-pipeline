@@ -207,54 +207,35 @@ RSS_SOURCES = [
 **家居RSS源扩充调研** 见 `references/home-rss-expansion-research.md`（国际可用源+失败源+中文替代方案）
 **过滤器调优历史** 见 `references/filter-tuning-history.md`（每次调优的具体变更、效果数据、后续方向）
 
-**Twitter AI大佬追踪（cookie方案）：**
+**Twitter AI 大佬追踪（page-agent + CDP 混合方案，2026-06-23 更新）：**
 
-CDP端口3456，Chrome DevTools端口9223。Twitter cookie存储在 `~/.hermes/cookies/twitter.json`。
+CDP端口3456。Twitter 已登录（cookie `~/.hermes/cookies/twitter.json`）。
 
 ```bash
-# 1. 找到已打开的Twitter tab（或新建）
-TWITTER_TARGET=$(curl -s http://localhost:3456/targets | python3 -c "
-import sys, json
-targets = json.load(sys.stdin)
-for t in targets:
-    if 'x.com' in t.get('url', '') and 'search' in t.get('url', ''):
-        print(t['targetId'])
-        break
-")
+# 一键提取 AI 大佬推文（CDP 模式，自动绕过 x.com CSP）
+python3 ~/.hermes/scripts/pa_web_extract.py --twitter --output /tmp/twitter_ai.json
 
-# 2. 如果没有Twitter tab，新建一个
-if [ -z "$TWITTER_TARGET" ]; then
-  # 先打开空白页
-  TWITTER_TARGET=$(curl -s "http://localhost:3456/new?url=about:blank" | python3 -c "import sys,json; print(json.load(sys.stdin).get('targetId',''))")
-  # 注入cookie
-  source ~/.hermes/hermes-agent/.venv/bin/activate
-  python3 -c "
-import json, os, urllib.request
-cookies = json.load(open(os.path.expanduser('~/.hermes/cookies/twitter.json')))
-target = '$TWITTER_TARGET'
-for c in cookies:
-    name, value, domain = c['name'], c['value'], c.get('domain', '.x.com')
-    payload = json.dumps({'targetId': target, 'name': name, 'value': value, 'domain': domain, 'secure': True, 'path': '/'}).encode()
-    req = urllib.request.Request('http://localhost:3456/eval?target=' + target,
-        data=f'document.cookie=\"{name}={value};domain={domain};path=/;secure\"'.encode())
-    urllib.request.urlopen(req, timeout=5)
-"
-  # 导航到搜索页
-  curl -s "http://localhost:3456/navigate?target=$TWITTER_TARGET&url=https://x.com/search?q=(from%3Asama%20OR%20from%3Akarpathy%20OR%20from%3ADarioAmodei%20OR%20from%3ADrJimFan%20OR%20from%3Aylecun)%20lang%3Aen&src=typed_query&f=live" > /dev/null
-  sleep 5
-fi
+# 指定账号
+python3 ~/.hermes/scripts/pa_web_extract.py --twitter --accounts "sama,karpathy,DarioAmodei" --output /tmp/twitter_ai.json
 
-# 3. 提取推文
-curl -s -X POST "http://localhost:3456/eval?target=$TWITTER_TARGET" -d '
-JSON.stringify({
-  tweets: Array.from(document.querySelectorAll("[data-testid=\"tweet\"]")).slice(0, 10).map(el => {
-    const textEl = el.querySelector("[data-testid=\"tweetText\"]");
-    const text = textEl ? textEl.textContent.slice(0, 200) : "";
-    const userEl = el.querySelector("[data-testid=\"User-Name\"]");
-    const userName = userEl ? userEl.textContent.split("@")[0].trim().split("\\n")[0] : "?";
-    return {user: userName, text: text};
-  })
-})'
+# 附加关键词
+python3 ~/.hermes/scripts/pa_web_extract.py --twitter --keyword "GPT" --output /tmp/twitter_ai.json
+```
+
+输出格式：
+```json
+{
+  "source": "twitter_cdp",
+  "timestamp": "2026-06-23T14:26:08Z",
+  "total": 4,
+  "tweets": [
+    {"name": "Elon Musk", "handle": "@elonmusk", "text": "...", "time": "2026-06-18T16:30:39Z", "likes": "2.6万"},
+    ...
+  ]
+}
+```
+
+**⚠️ x.com CSP 限制：** page-agent 的 LLM API 调用被 x.com 的 CSP 拦截（Network request failed）。Twitter 必须用 CDP 直接提取模式（手写选择器），不能用 page-agent 的自然语言模式。其他站点（tophub/百度/SMZDM）可以用 page-agent。
 ```
 
 追踪的AI大佬名单：见上方Twitter AI大佬追踪章节。

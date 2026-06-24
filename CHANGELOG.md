@@ -4,6 +4,16 @@
 
 ---
 
+## v0.4.1 — 2026-06-24: 脚本同步更新：article-pipeline/sourcing-hotspots/angle-selection prompt微调
+
+### 变更文件
+-  angle-selection/SKILL.md   |  2 ++
+-  article-pipeline/SKILL.md  | 14 +++++++++
+-  sourcing-hotspots/SKILL.md | 71 +++++++++++++++++-----------------------------
+-  3 files changed, 42 insertions(+), 45 deletions(-)
+
+---
+
 ## v0.4.0 — 2026-06-22: zvec 知识库集成
 
 **核心变更**：接入阿里开源 zvec 向量搜索库，为流水线增加"记忆"能力。

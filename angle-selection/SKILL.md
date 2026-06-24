@@ -55,6 +55,8 @@ description: >
 
 **角度库结果必须写入输出**：在角度分析中加上"历史角度参考"字段。
 
+**注意**：zvec 知识库的完整 API 文档见 article-pipeline skill 的 `references/zvec-integration.md`。
+
 这些发言不是热点来源（热点已在Step 1抓到），而是**角度参考**——看看行业里有影响力的人怎么看待这个话题，他们的表达方式、争议点、反面观点，都可以成为我们选角度的素材。
 
 ```bash

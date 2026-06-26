@@ -556,7 +556,7 @@ for brand in ["乐道", "理想", "小米汽车", "问界", "比亚迪"]:
 
 热点数据输出后，必须经过**热点数据Agent**质量评估，然后生成结构化格式供筛选Agent使用。
 
-**热点数据Agent prompt**：`article-pipeline/references/hotspot-agent-prompt.md`（v2）
+**热点数据Agent prompt**：`references/hotspot-agent-prompt.md`（v2）
 
 **热点数据Agent的职责**：
 - 评估数据完整性、时效性、覆盖度

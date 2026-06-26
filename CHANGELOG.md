@@ -4,6 +4,18 @@
 
 ---
 
+## v0.5.0 — 2026-06-27: v0.5.0: 流水线清理+迁移完成 — Agent prompt全部迁入references/，content-engine归档，新增6个skill同步（framing-article/writing-draft/polishing-writing/publishing-doc/khazix-style/xhs-product-recommendation），路径修复
+
+### 变更文件
+-  angle-selection/SKILL.md                         |  95 ++----------------
+-  article-pipeline/SKILL.md                        |   2 +-
+-  article-pipeline/references/github-versioning.md |  63 +++++++-----
+-  screening-topics/SKILL.md                        | 120 +++--------------------
+-  sourcing-hotspots/SKILL.md                       |   2 +-
+-  5 files changed, 61 insertions(+), 221 deletions(-)
+
+---
+
 ## v0.4.1 — 2026-06-24: 脚本同步更新：article-pipeline/sourcing-hotspots/angle-selection prompt微调
 
 ### 变更文件

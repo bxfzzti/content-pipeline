@@ -115,7 +115,7 @@ $ZVEC check_style "<draft_text>" "[topk]"
 
 **集成指南：** `references/zvec-integration.md` — 环境配置、CLI 命令、4 个 collection、流水线接入点、API 坑。
 
-**版本管理：** `references/github-versioning.md` — GitHub 仓库、发布流程、版本命名规则。仓库：https://github.com/bxfzzti/content-pipeline
+**版本管理：** `references/github-versioning.md` — GitHub 仓库、发布流程、版本命名规则。仓库：https://github.com/bxfzzti/content-pipeline。自动发布脚本：`~/.hermes/scripts/publish-pipeline.sh "变更说明" [major|minor|patch]`
 
 ## zvec 知识库接入点
 

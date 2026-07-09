@@ -28,9 +28,51 @@
 | `angle-selection/` | 角度选择 Skill（三轴旋转法 + SPOV 评分） |
 | `screening-topics/` | 选题筛选 Skill（50 分制评分） |
 | `sourcing-hotspots/` | 热点抓取 Skill（多平台聚合） |
+| `daily-hot-mcp/` | daily-hot-mcp 扩展工具源码（产品体验搜索） |
 | `title-craft/` | 标题创作 Skill |
 | `xhs-adapter/` | 小红书平台适配 Skill |
 | `zvec/` | 本地向量知识库模块（选题去重、角度库、风格锚点、竞品库） |
+
+## 产品体验选题池
+
+2026-07-09 起，流水线新增一条和热点并列的「产品体验线」，用于发现适合小红书二创的科技/生活产品内容。
+
+核心能力：
+
+- `search-product-experience-posts`：按产品关键词搜索什么值得买原创/文章，补充少数派和 Chiphell 的体验、开箱、横评、吐槽内容。
+- 默认主抓词来自什么值得买近期类目热度和实跑效果，例如 `NAS`、`耳机`、`键盘`、`洗地机`、`咖啡机`、`扫地机器人`、`投影仪`、`3D打印机`。
+- `creative_score`：按关键词命中、来源、内容类型、互动、近期性、具体型号打分；接口未稳定提供阅读量时不按阅读量排序。
+- 飞书多维表格增补：`sourcing-hotspots/scripts/smzdm_product_topics.py` 支持抓取、报告生成、按原文链接去重写入 Base。
+
+本地运行：
+
+```bash
+python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output
+```
+
+同步到飞书 Base：
+
+```bash
+python sourcing-hotspots/scripts/smzdm_product_topics.py \
+  --output-dir output \
+  --sync-lark \
+  --base-token <base_token> \
+  --table-id <table_id>
+```
+
+创建 Base schema：
+
+```bash
+cd sourcing-hotspots
+scripts/create_lark_base.sh
+```
+
+安装每日刷新任务：
+
+```bash
+cd sourcing-hotspots
+HERMES_TOPICS_PYTHON=/path/to/python scripts/install_daily_smzdm_topics_launchd.sh <base_token> <table_id>
+```
 
 ## zvec 知识库
 

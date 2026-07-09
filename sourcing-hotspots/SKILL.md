@@ -10,6 +10,49 @@ description: >
 
 启动 hot-aggregator 服务 + 国际RSS源，拉取国内外实时热点数据，**按四品类体系（汽车 + 3C数码 + AI + 家居）分别过滤**，输出 8-12 条跨品类精选热点。
 
+## 产品体验线（2026-07-09 新增）
+
+热点线之外，并行维护一条「产品体验/开箱/吐槽/横评」线，专门服务小红书二创选题。两条线不要混写：
+
+- 热点线回答「今天大家在聊什么」，输出 `/tmp/article-pipeline/01-hotspots-raw.md`。
+- 产品体验线回答「最近哪些科技/生活产品被用户体验、开箱、吐槽、横评」，输出 `/tmp/article-pipeline/01b-product-experience.md`。
+
+优先使用 `daily-hot-mcp` 新增工具 `search-product-experience-posts`：
+
+```json
+{
+  "keyword": "NAS",
+  "limit": 20,
+  "include_deals": false,
+  "sources": "smzdm,sspai,chiphell"
+}
+```
+
+默认主抓词来自什么值得买近期类目热度和实跑效果，不靠纯猜：
+
+- 电脑数码：`NAS`、`耳机`、`键盘`、`路由器`、`显卡`、`显示器`、`手机`、`充电器`、`游戏本`
+- 生活电器：`洗地机`、`咖啡机`、`扫地机器人`、`空气净化器`、`空调`、`冰箱`
+- 家居/办公/车载：`浴霸`、`投影仪`、`3D打印机`、`车载冰箱`、`智能门锁`
+
+观察词只在用户点名或扩展探索时抓：`蓝牙耳机`、`数据线`、`平板电脑`、`智能手表`、`笔记本电脑`、`台式机`、`电吹风`、`电动剃须刀`、`冲牙器`、`电动牙刷`、`美容仪`、`健康秤`、`按摩椅`、`洗衣机`、`汽车充电桩`、`车载支架`。
+
+排序优先看 `creative_score` 和品类稳定分。`creative_score` 由关键词命中、来源可信度、内容类型、评论/收藏/点赞、近期性、具体型号组成；什么值得买当前接口未稳定提供阅读量，不要声称按阅读量排序。
+
+飞书多维表格增补脚本：
+
+```bash
+python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output
+python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output --sync-lark --base-token <base_token> --table-id <table_id>
+```
+
+相关文件：
+
+- `daily-hot-mcp/tools/product_experience.py` — MCP 工具源码
+- `sourcing-hotspots/scripts/smzdm_product_topics.py` — 每日抓取、去重、同步飞书 Base
+- `sourcing-hotspots/references/lark_base_schema.json` — 飞书 Base 建表 schema
+- `sourcing-hotspots/references/daily-hot-mcp-tools.md` — daily-hot-mcp 工具表
+- `article-pipeline/references/data-flow.md` — 产物文件与阶段交接
+
 > **数据源：**
 > - `hot-aggregator` 端口 6688 — 国内69平台聚合（微博/知乎/抖音/头条/B站/ithome/geekpark等）
 > - **国际RSS源**（48h时间窗口）— TechCrunch/TheVerge/Wired/ArsTechnica/MIT-TR/HN-AI/ProductHunt/9to5Mac/OpenAI Blog/Google AI

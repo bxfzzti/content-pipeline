@@ -20,6 +20,7 @@ description: >
 ```
 Step 1: 抓热点          sourcing-hotspots（skill）
          │ 输出：01-hotspots-raw.md
+         │ 并行输出：01b-product-experience.md（产品体验/开箱/吐槽/横评候选池）
          ▼
 Step 1.2: 数据质量评估   热点数据Agent（references/hotspot-agent-prompt.md）
          │ 自动去重、纠正分类、标注情绪强度
@@ -71,6 +72,19 @@ Step 8: 知识回写        存入 zvec 知识库（自动）
          │ 选题→topics库、角度→angles库、文章→style_anchors库
          │ 形成知识积累正循环
 ```
+
+### 产品体验二创支线（2026-07-09）
+
+`sourcing-hotspots` 现在同时拉两类上游输入：
+
+1. **热点线**：平台热榜/RSS/hot-aggregator，输出 `/tmp/article-pipeline/01-hotspots-raw.md`。
+2. **产品体验线**：`search-product-experience-posts`，按什么值得买为主、少数派/Chiphell 为补充，输出 `/tmp/article-pipeline/01b-product-experience.md`。
+
+产品体验线用于发现科技类和生活类产品的体验、开箱、横评、吐槽、新品和避坑内容。筛选阶段不要把它混进热点榜；应作为「产品二创候选」单独评分，再和热点选题并列推荐。
+
+默认输出必须保留原文链接、短摘录、`creative_score`、分数明细和二创切入。若写入飞书多维表格，使用 `sourcing-hotspots/scripts/smzdm_product_topics.py` 按原文链接去重增补。
+
+阶段产物契约见 `references/data-flow.md`。
 
 ## zvec 知识库集成（2026-06-22）
 

@@ -4,6 +4,54 @@
 
 ---
 
+## v0.6.0 — 2026-07-09: 产品体验选题池 + 什么值得买二创流 + 飞书 Base 增补
+
+**核心变更**：在热点抓取之外新增「产品体验线」，把什么值得买等平台上的体验、开箱、横评、吐槽、新品内容沉淀为小红书二创候选池，并支持每日增补到飞书多维表格。
+
+### 新增能力
+
+- `daily-hot-mcp/tools/product_experience.py`
+  - 新增 MCP 工具 `search-product-experience-posts`
+  - 主源：什么值得买原创/文章
+  - 补充源：少数派、Chiphell
+  - 返回原文链接、内容短摘、内容类型、互动数据、`creative_score` 和 `score_breakdown`
+- `sourcing-hotspots/scripts/smzdm_product_topics.py`
+  - 按默认产品词池抓取什么值得买体验类内容
+  - 输出 Markdown 报告、items JSON、Base 批量写入 JSON
+  - 支持按原文链接分页去重后增补/更新飞书 Base
+- `sourcing-hotspots/references/lark_base_schema.json`
+  - 飞书多维表格字段 schema：标题、原文链接、关键词、组别、内容类型、单篇分、关键词稳定分、互动数据、内容定位、二创切入、状态等
+- `sourcing-hotspots/scripts/create_lark_base.sh`
+  - 一键创建「Hermes 产品体验选题池」Base
+- `sourcing-hotspots/scripts/install_daily_smzdm_topics_launchd.sh`
+  - 安装 macOS launchd 每日刷新任务
+
+### 流程变化
+
+- `sourcing-hotspots` 现在并行输出：
+  - `/tmp/article-pipeline/01-hotspots-raw.md`：热点线
+  - `/tmp/article-pipeline/01b-product-experience.md`：产品体验线
+- `article-pipeline` 将产品体验线作为「产品二创候选」进入筛选阶段，不再混入热点榜。
+- 默认产品词不再靠泛词猜测，而是基于什么值得买类目热度和实跑效果收敛：
+  - 电脑数码：`NAS`、`耳机`、`键盘`、`路由器`、`显卡`、`显示器`、`手机`、`充电器`、`游戏本`
+  - 生活电器：`洗地机`、`咖啡机`、`扫地机器人`、`空气净化器`、`空调`、`冰箱`
+  - 家居/办公/车载：`浴霸`、`投影仪`、`3D打印机`、`车载冰箱`、`智能门锁`
+
+### 打分修正
+
+- `creative_score` 不使用阅读量；当前接口未稳定提供阅读量。
+- 单篇分由关键词命中、来源、内容类型、互动、近期性、具体型号组成。
+- 互动分从「可压倒排序」调整为「辅助加分」，避免单篇异常互动把小样本品类顶到第一。
+- 新增「关键词稳定分」：前 5 条平均单篇分 + 有效条数加成，用于判断品类是否稳定产出可二创素材。
+
+### 验证结果
+
+- 成功创建飞书 Base「Hermes 产品体验选题池」。
+- 写入 81 条什么值得买产品体验候选，原文链接去重后 0 重复。
+- 每日刷新任务安装为 `ai.hermes.smzdm-product-topics`，默认每天 09:20 运行。
+
+---
+
 ## v0.5.0 — 2026-06-27: v0.5.0: 流水线清理+迁移完成 — Agent prompt全部迁入references/，content-engine归档，新增6个skill同步（framing-article/writing-draft/polishing-writing/publishing-doc/khazix-style/xhs-product-recommendation），路径修复
 
 ### 变更文件

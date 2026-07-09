@@ -13,58 +13,78 @@ description: >
 
 ---
 
+## 三层架构（强制）
+
+内容创作流按三层运行：
+
+| 层级 | 职责 | 边界 |
+|------|------|------|
+| **主 Agent** | 理解用户目标、选择路径、调用 Skill/工具、组装上下文、做最终取舍 | 唯一拥有流程控制权和最终判断权 |
+| **Skill** | 提供阶段 SOP、prompt 规则、输入输出契约和检查清单 | 不独立抢决策权，不自行改变流程 |
+| **工具/数据源** | 搜索、抓取、写入飞书、查询 zvec、生成本地文件 | 只执行动作或返回数据，不判断选题价值 |
+
+子 Agent 不是默认流程，只在三类场景启用：
+
+1. **多候选筛选**：对热点/产品体验候选做独立评分、反面理由、优先级排序。
+2. **质量审查**：对事实、结构、风格、平台适配做反向检查，只输出报告，不直接改正文。
+3. **多方案并行**：同一选题需要比较 2-3 个角度、结构或标题方向。
+
+禁止把每个阶段都派成独立 Agent。主 Agent 必须自己串起上下文、读取阶段产物、处理失败回退，并对最终输出负责。
+
+---
+
 ## 流水线全景
 
 **完整路径：热点 → 选题 → 角度（含KOL）→ 标题先行 → 拆论点 → 找支柱 → 定调 → 写正文 → 质检 → 修复 → 发布**
 
 ```
-Step 1: 抓热点          sourcing-hotspots（skill）
+Step 1: 抓素材          sourcing-hotspots（Skill）
          │ 输出：01-hotspots-raw.md
          │ 并行输出：01b-product-experience.md（产品体验/开箱/吐槽/横评候选池）
          ▼
-Step 1.2: 数据质量评估   热点数据Agent（references/hotspot-agent-prompt.md）
+Step 1.2: 数据质量整理   主 Agent 调用数据质量规则/工具
          │ 自动去重、纠正分类、标注情绪强度
          │ ⚠️ 两层输出：第一层"全网热点"（社会/国际/财经/文娱/体育）+ 第二层"关注领域热点"（汽车/3C/AI/家居）
          │ 输出：结构化热点数据（按两层组织）
          ▼
-Step 1.5: 筛选选题      筛选Agent（references/screening-agent-prompt.md）
+Step 1.5: 筛选选题      screening-topics（Skill，可启用子 Agent 独立评分）
          │ ⚠️ 两层筛选：先筛全网热点（按全网热度）→ 再筛关注领域热点
          │ 评分50分制：全网热度×2 + 时效性×2 + 讨论热度×2 + 情绪强度×2 + 内容关联度×2
          │ 输出：3-5个选题推荐（热度评分+切入方向+反面理由）
          │ ⏸ 用户确认选题
          ▼
-Step 2: 选角度          angle-selection（skill，含KOL微博48-72h观点采集）
+Step 2: 选角度          angle-selection（Skill，含KOL微博48-72h观点采集）
          │ 输出：03-angle.md
          │ ⏸ 用户确认角度
          ▼
-Step 3: 结构设计        结构Agent（references/structure-agent-prompt.md）
+Step 3: 结构设计        framing-article（Skill，可启用子 Agent 比较结构方案）
          │ 输出：2-3种结构方案（框架+钩子+逻辑链）
          ▼
-Step 4: 定调            framing-article（skill，标题先行）
+Step 4: 定调            framing-article（Skill，标题先行）
          │ 输出：04-article-plan.md（标题+核心论点+支柱+论点大纲）
          │ ⏸ 用户确认plan
          ▼
-Step 4.5: 骨架质检      质检Agent（references/quality-agent-prompt.md，只检查骨架）
+Step 4.5: 骨架质检      polishing-writing（Skill，可启用子 Agent 只检查骨架）
          │ ❌ 不过 → 回退Step 4
          ▼
-Step 5: 写正文          写作Agent（references/writing-agent-prompt.md）
+Step 5: 写正文          writing-draft（Skill）
          │ ⚠️ 事实补充驱动：先搜索事实，再动笔
          │ 输出：05-article-draft.md
          ▼
-Step 5.5: 正文质检      质检Agent（references/quality-agent-prompt.md）
+Step 5.5: 正文质检      polishing-writing（Skill，可启用子 Agent 反向审查）
          │ ❌ 致命/严重 → 进入Step 6
          ▼
-Step 6: 发布质检        质检Agent（L0-L5全面检查）
+Step 6: 发布质检        polishing-writing（L0-L5全面检查）
          │ 输出：质检报告（严重程度量化+修复建议+删减建议）
          │ ❌ 致命/严重 → 进入Step 6.5
          │ ⏸ 用户确认发布
          ▼
-Step 6.5: 修复          修复Agent（references/fix-agent-prompt.md）
+Step 6.5: 修复          主 Agent 按质检报告修复，必要时调用 polishing-writing 复检
          │ 按严重程度排序修复
          │ 输出：修复报告+修复后的文章
          │ 修复后 → 回到Step 6重新质检（最多3轮）
          ▼
-Step 7: 发布            发布Agent（references/publishing-agent-prompt.md）
+Step 7: 发布            publishing-doc（Skill/工具）
          │ 发布到飞书 + 附备选标题
          │ 输出：飞书链接
          ▼
@@ -133,13 +153,13 @@ $ZVEC check_style "<draft_text>" "[topk]"
 
 ## zvec 知识库接入点
 
-| Agent | Step | 操作 |
+| 调用方 | Step | 操作 |
 |-------|------|------|
-| screening-agent | 1.5 | `dedup` 选题去重（阈值 0.65） |
-| angle-selection | 0 | `search_angles` 搜历史角度 |
-| quality-agent | 0.5 | `check_style` 风格相似度 |
-| main-agent | 2/3 | `add_topic` / `add_angle` 存库 |
-| main-agent | 8 | `add_style` 发布后回写风格锚点 |
+| 主 Agent / screening-topics | 1.5 | `dedup` 选题去重（阈值 0.65） |
+| 主 Agent / angle-selection | 0 | `search_angles` 搜历史角度 |
+| 主 Agent / polishing-writing | 0.5 | `check_style` 风格相似度 |
+| 主 Agent | 2/3 | `add_topic` / `add_angle` 存库 |
+| 主 Agent | 8 | `add_style` 发布后回写风格锚点 |
 
 ## 质检 Agent Prompt 模板
 
@@ -354,9 +374,9 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 用户说「跑流程」「一条龙」「跑一次流程」时：
 1. 自动执行 Step 1（热点抓取）
-2. **⚠️ 必须走热点数据Agent（Step 1.2）和筛选Agent（Step 1.5）** — 不能只跑filter脚本就跳到下一步。2026-06-18教训：用户两次指出"抓热点没有走Agent"和"没有走选题定调agent"。filter脚本是数据预处理，Agent才是质量评估和选题判断。
+2. **⚠️ 必须走数据质量整理（Step 1.2）和 screening-topics（Step 1.5）** — 不能只跑 filter 脚本就跳到下一步。filter 脚本是数据预处理，主 Agent 必须继续完成质量评估、结构化和选题判断。
 3. **自动选最佳选题，直接进入角度→质检→定调→质检→写作→质检→发布**
-4. 每一步质检用 delegate_task 派独立 agent，把零跑文章6条教训作为检查清单
+4. 质检默认由 polishing-writing 执行；需要反向审查或事实核查时，再启用子 Agent，把零跑文章6条教训作为检查清单
 5. 质检不过→回退上一步重做，不跳过
 6. 全程完成后汇报：飞书链接 + 核心论点 + 备选标题
 
@@ -377,7 +397,7 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 当用户说「这个话题值得写」时：
 1. 出3-5个完全不同方向（认知颠覆/观点输出/趋势洞察/选购决策/体验种草）
-2. `delegate_task` 并行写
+2. 仅在需要比较多个方向时使用子 Agent 并行产出草稿或评审
 3. 批量发布到飞书
 4. 观察哪个方向效果好，下次复制
 
@@ -385,19 +405,19 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 ## 批量写作模式
 
-多篇并行用 `delegate_task`，每篇存 `/tmp/article-pipeline/batch-NN-title.md`，写完循环发布。
+多篇并行时，可以对每篇启动独立子 Agent，但主 Agent 必须统一分配输入、检查产物、循环发布。每篇存 `/tmp/article-pipeline/batch-NN-title.md`。
 
-子agent prompt必须反复强调字数要求（2500-3000中文字），写完验证字数。
+子 Agent prompt 必须反复强调字数要求（2500-3000中文字），写完验证字数。
 
 ---
 
-## 子agent网络问题
+## 子 Agent 网络问题
 
-子agent的 `web_extract` 可能被限制。回退方案：
-1. 先尝试子agent并行搜索
-2. 全部失败 → 主agent直接搜，每轮2-3个不同关键词
-3. 搜3-4轮后提取关键URL → 主agent用 `web_extract` 抓正文
-4. 不要等子agent超时太久
+子 Agent 的 `web_extract` 可能被限制。回退方案：
+1. 先尝试子 Agent 并行搜索
+2. 全部失败 → 主 Agent 直接搜，每轮2-3个不同关键词
+3. 搜3-4轮后提取关键URL → 主 Agent 用 `web_extract` 抓正文
+4. 不要等子 Agent 超时太久
 
 ---
 
@@ -423,70 +443,26 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 ---
 
-## 多Agent协同工作流（2026-06-17）
+## 子 Agent 使用边界（2026-07-10 收敛版）
 
-单个Agent的逻辑天然比较直来直去——接到任务→搜索→写，链路上没有"质疑"环节。需要多个Agent在关键节点提出质疑、反问、补充新观点。
+默认链路是：主 Agent 调用 Skill，Skill 调工具，产物落盘，主 Agent 判断下一步。
 
-### 三个协同Agent
+子 Agent 只作为「独立视角」介入，不作为每个阶段的默认执行者：
 
-| Agent | 职责 | 何时介入 | Prompt位置 |
-|-------|------|---------|-----------|
-| **热点数据Agent** | 数据质量评估、去重、纠正分类、标注情绪强度、两层输出（全网热点+关注领域热点） | Step 1→1.2之间 | `references/hotspot-agent-prompt.md` |
-| **筛选Agent** | 两层筛选（先全网后领域）、50分制评分（含全网热度维度）、切入方向分析 | Step 1.2→1.5之间 | `references/screening-agent-prompt.md` |
-| **结构Agent** | 搜完事实后，提出2-3种文章结构方案 | Step 2→3之间 | `references/structure-agent-prompt.md` |
-| **写作Agent** | 搜索事实+写正文 | Step 4→5之间 | `references/writing-agent-prompt.md` |
-| **质检Agent** | 检查事实/风格/逻辑 | Step 4.5/5.5/6 | `references/quality-agent-prompt.md` |
-| **修复Agent** | 按质检报告修复 | Step 6→6.5之间 | `references/fix-agent-prompt.md` |
-| **发布Agent** | 发布到飞书+附备选标题 | Step 6.5→7之间 | `references/publishing-agent-prompt.md` |
+| 允许场景 | 介入方式 | 退出条件 |
+|---------|----------|----------|
+| 多候选筛选 | 对 3-10 个候选独立评分、给反面理由、标注风险 | 输出排序和理由后交回主 Agent |
+| 质量审查 | 检查事实、结构、风格、平台规则，只输出问题报告 | 报告完成后由主 Agent 决定是否修改 |
+| 多方案并行 | 同题比较角度/结构/标题/草稿 | 主 Agent 选择或融合方案 |
 
-**⚠️ Prompt设计核心原则**：约束必须加负面示例（"不能用XX，如XX"），正面约束Agent不一定遵守。详见 `references/multi-agent-prompt-design.md`。
+**禁止场景：**
 
-### 协同流程
+- 禁止把抓取、筛选、结构、写作、修复、发布都拆成常驻子 Agent。
+- 禁止子 Agent 自己决定跳过用户确认点。
+- 禁止子 Agent 直接发布、写入长期库或覆盖主 Agent 已确认的方向。
+- 禁止把工具失败归因给“Agent不可用”后停住；主 Agent 必须尝试工具直连、关键词重搜或降级路径。
 
-```
-热点数据 → 热点数据Agent（质量评估+去重+纠正分类）
-                ↓
-         主Agent组装信息
-                ↓
-         筛选Agent（选什么、从哪切入）
-                ↓
-         主Agent确认选题
-                ↓
-         结构Agent（怎么组织）
-                ↓
-         主Agent定调
-                ↓
-         写作Agent（搜索事实+写正文）
-                ↓
-         质检Agent（写得对不对、好不好）
-                ↓
-         修复Agent（按质检报告修复）
-                ↓
-         质检Agent（最终确认，最多3轮）
-                ↓
-         发布Agent（发布到飞书）
-```
-
-### 执行方式
-
-```python
-# Step 1.5：筛选Agent
-delegate_task(goal="热点筛选分析", context="热点数据(按message-format.md格式)+内容定位+筛选Agent prompt", toolsets=["web"])
-
-# Step 3.5：结构Agent
-delegate_task(goal="文章结构分析", context="事实材料(按message-format.md格式)+读者已知信息+切入方向+结构Agent prompt", toolsets=["file"])
-
-# Step 4.5/5.5/6：质检Agent（已有）
-delegate_task(goal="正文质检", context="正文+6条检查清单", toolsets=["search"])
-```
-
-**⚠️ Agent间信息传递必须用标准化格式**（见 `references/message-format.md`）。主Agent负责组装信息按格式传给子Agent，子Agent按格式输出。信息缺失时子Agent先问，不编造。
-
-### 关键原则
-
-- **结构Agent和筛选Agent的prompt质量决定它们能不能提出有价值的质疑**
-- 核心价值不是"多个Agent帮我写"，而是**在关键节点有人提出质疑和替代方案**
-- 主Agent从多个方案中选一个，或者把不同方案的优点组合
+历史 prompt（如 `references/screening-agent-prompt.md`、`references/quality-agent-prompt.md`、`references/multi-agent-prompt-design.md`）保留为调优资料。运行时以本节和顶部“三层架构”为准。
 
 ---
 
@@ -529,9 +505,9 @@ delegate_task(goal="正文质检", context="正文+6条检查清单", toolsets=[
 - `references/ifanr-content-analysis.md` — 爱范儿内容模式分析（原content-engine）
 - `references/structure-agent-prompt.md` — 结构Agent prompt v4（决策树选框架+配套钩子+自检清单）
 - `references/screening-agent-prompt.md` — 筛选Agent prompt v5（50分制评分含全网热度维度+两层筛选+动态切入方向+单维度爆点规则）
-- `references/message-format.md` — 多Agent信息传递格式规范（主Agent↔子Agent的标准化输入输出格式）
+- `references/message-format.md` — 结构化信息传递格式规范（主 Agent 调用 Skill/子 Agent 时的标准化输入输出格式）
 - `references/quality-agent-prompt.md` — 质检Agent prompt v3（L0-L5六层检查+严重程度量化+平台适配+读者体验模拟+删减建议+迭代管理）
 - `references/structure-agent-case-study.md` — 结构Agent完整案例（沃齐尼亚vs阿尔奥维斯，含输入/输出/教训）
 - `references/harness-engineering-analysis.md` — Harness Engineering方法论分析（2026-06-18，5个改进方向：SKILL.md瘦身/确定性Hooks/结构化记忆/Loop自动化/Reviewer隔离）
-- `references/multi-agent-prompt-design.md` — 多Agent prompt设计原则（负面示例>正面约束、8 Agent架构、信息传递格式、迭代控制）
+- `references/multi-agent-prompt-design.md` — 历史 prompt 调优资料（负面示例>正面约束、信息传递格式、迭代控制；运行时以三层架构为准）
 - `references/zvec-knowledge-base.md` — zvec 本地向量知识库集成（API 熬坑、CLI 命令、阈值参考、schema 设计）

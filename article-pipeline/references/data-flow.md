@@ -1,5 +1,13 @@
 # 数据流总图
 
+运行时按三层架构理解这张图：
+
+- 主 Agent 负责串联全流程、判断是否进入下一步、处理失败回退。
+- Skill 负责阶段 SOP 和产物契约。
+- 工具/数据源负责搜索、抓取、写入飞书、查询 zvec 等动作。
+
+子 Agent 只在多候选筛选、质量审查、多方案并行时作为独立视角介入；默认数据流不依赖子 Agent 常驻接力。
+
 每两个 Skill 之间传递的数据：
 
 ```
@@ -91,7 +99,7 @@
 | bitable-tracker | 飞书链接+原始标题+最终标题 | 多维表格记录+7天提醒 | — | — |
 | growing-from-mistakes | 错误描述 | 复盘记录 | /tmp/article-pipeline/06-mistake-reflection.md | 写作资料/反思记录/ |
 
-**文件化规则：** 每个 Skill 执行完成后，必须将产出写入本地 `/tmp/article-pipeline/`。后一个 Skill 读取本地文件作为输入，同时主 Agent 也要把完整文本传给子 Agent，避免隔离环境读不到文件。
+**文件化规则：** 每个 Skill 执行完成后，必须将产出写入本地 `/tmp/article-pipeline/`。后一个 Skill 读取本地文件作为输入；如果启用子 Agent 做筛选、质检或多方案比较，主 Agent 也要把完整文本传给子 Agent，避免隔离环境读不到文件。
 
 **落盘自检：**
 

@@ -16,7 +16,7 @@ description: >
 
 ```bash
 /Users/xxqq/.hermes/hermes-agent/.venv/bin/python \
-  sourcing-hotspots/scripts/full_hotspot_run.py \
+  ~/.hermes/skills/sourcing-hotspots/scripts/full_hotspot_run.py \
   --output-dir /tmp/article-pipeline \
   --deadline-seconds 120
 ```

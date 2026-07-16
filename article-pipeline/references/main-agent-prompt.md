@@ -59,7 +59,7 @@
 
 ### Step 1: 抓素材
 
-调用 `sourcing-hotspots/scripts/full_hotspot_run.py`。热点阶段全局截止时间为 120 秒，所有来源必须标记为 `live`、`cache`、`unavailable` 或 `disabled`。热点阶段不得提前运行 Linkly、zvec、深度网页核验、评论研究或生图。
+调用 `~/.hermes/skills/sourcing-hotspots/scripts/full_hotspot_run.py`。热点阶段全局截止时间为 120 秒，所有来源必须标记为 `live`、`cache`、`unavailable` 或 `disabled`。热点阶段不得提前运行 Linkly、zvec、深度网页核验、评论研究或生图。
 
 输出：
 

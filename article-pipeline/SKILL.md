@@ -419,7 +419,7 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 ## 一键启动规则
 
 用户说「跑流程」「一条龙」「跑一次流程」时：
-1. 调用 `sourcing-hotspots/scripts/full_hotspot_run.py`，在 120 秒内完成全来源实时抓取或缓存降级。
+1. 调用 `~/.hermes/skills/sourcing-hotspots/scripts/full_hotspot_run.py`，在 120 秒内完成全来源实时抓取或缓存降级。
 2. 完成数据质量整理和 screening-topics，输出 5-8 个候选、原文链接、评分依据、反面理由和来源状态。
 3. **停在热点与选题确认，不得自动选择。**
 4. 用户确认选题后再研究并生成角度，随后停在角度确认。

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.6.7 — 2026-07-16: Linkly 接入方式校准
+
+**核心变更**：将 Linkly AI 试点说明校准为 HTTP MCP 主接入方式，CLI 仅用于诊断和本地调试。
+
+### 变更内容
+
+- 明确主接入：`linkly-ai -> http://127.0.0.1:60606/mcp`。
+- 明确 CLI 只用于 `linkly status`、`linkly doctor` 等诊断动作，不是主接入依赖。
+- 明确前置条件：Linkly AI Desktop 必须运行，并且已在 Settings → Libraries 添加资料库。
+- 明确暂不启用 Remote Tunnel；本机 Hermes/Codex 直连 `127.0.0.1`。
+
+---
+
 ## v0.6.6 — 2026-07-16: Linkly AI 本地资料检索试点
 
 **核心变更**：启动 Linkly AI 试点，将其定位为本地资料检索层，用于历史资料检索、写作前事实补充和质检反查。

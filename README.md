@@ -165,11 +165,18 @@ Linkly AI 作为本地资料检索层接入，适合查历史文章、产品说�
 | zvec | 选题去重、角度库、风格锚点、内容流结构化记忆 |
 | daily-hot-mcp / 什么值得买工具 | 外部热点和产品体验来源 |
 
-试点阶段只使用本机 MCP：
+试点阶段以 HTTP MCP 为主，不依赖 CLI：
 
 ```bash
 codex mcp add linkly-ai --url http://127.0.0.1:60606/mcp
 ```
+
+前置条件：
+
+- Linkly AI Desktop 必须运行
+- Linkly Desktop 已在 Settings → Libraries 中添加资料库
+- CLI 只用于诊断和本地调试，例如 `linkly status`、`linkly doctor`
+- 暂不启用 Remote Tunnel；本机 Hermes/Codex 直连 `127.0.0.1`，不需要公网通道
 
 如果没有配置资料库，Linkly 搜索会返回空结果，此时流程应标注「Linkly 本地资料未命中」，继续用 web/search/zvec 降级。
 

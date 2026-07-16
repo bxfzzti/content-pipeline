@@ -174,11 +174,12 @@ codex mcp add linkly-ai --url http://127.0.0.1:60606/mcp
 前置条件：
 
 - Linkly AI Desktop 必须运行
-- Linkly Desktop 已在 Settings → Libraries 中添加资料库
+- Linkly Desktop 已在「设置 → 文件夹」中添加至少一个监听目录；监听文件夹负责本地索引，是本地检索的必要条件
+- 「知识库 / Libraries」只用于按主题组织或共享资料，是可选能力；`list_libraries` 返回空列表不代表本地检索不可用
 - CLI 只用于诊断和本地调试，例如 `linkly status`、`linkly doctor`
 - 暂不启用 Remote Tunnel；本机 Hermes/Codex 直连 `127.0.0.1`，不需要公网通道
 
-如果没有配置资料库，Linkly 搜索会返回空结果，此时流程应标注「Linkly 本地资料未命中」，继续用 web/search/zvec 降级。
+可用性以一次真实的 MCP `search` 为准：Desktop 或 MCP 不通时标注「Linkly 本地资料不可用」；搜索调用正常但结果为空时标注「Linkly 本地资料未命中」。两种情况都继续用 web/search/zvec 降级，不要用 `list_libraries` 是否为空判断本地检索故障。
 
 ### 5. 用 zvec 做知识积累
 
@@ -291,6 +292,7 @@ scripts/install_daily_smzdm_topics_launchd.sh <base_token> <table_id>
 
 当前重点版本：
 
+- `v0.6.8`：校准 Linkly 监听文件夹、可选知识库和真实搜索判断规则。
 - `v0.6.4`：对外名称更新为「会自己找选题的小红书内容创作流」。
 - `v0.6.3`：固化中文呈现原则。
 - `v0.6.2`：收敛为主 Agent + Skill + 工具/数据源三层架构。

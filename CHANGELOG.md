@@ -4,6 +4,20 @@
 
 ---
 
+## v0.6.8 — 2026-07-16: Linkly 本地检索前置条件校准
+
+**核心变更**：根据 Desktop 和 HTTP MCP 实跑结果，区分监听文件夹与知识库，修正本地检索可用性判断。
+
+### 变更内容
+
+- 明确「设置 → 文件夹」中的监听目录负责本地索引，是本地检索的必要条件。
+- 明确「知识库 / Libraries」是可选主题组织层；`list_libraries` 空列表不代表本地检索不可用。
+- 改用一次真实 MCP `search` 判断本地索引是否可检索。
+- 区分「Linkly 本地资料不可用」与「Linkly 本地资料未命中」，两种情况均可降级到 web/search/zvec。
+- 已用 `/Users/xxqq/content-pipeline` 监听目录完成 `search → outline → read` 回归。
+
+---
+
 ## v0.6.7 — 2026-07-16: Linkly 接入方式校准
 
 **核心变更**：将 Linkly AI 试点说明校准为 HTTP MCP 主接入方式，CLI 仅用于诊断和本地调试。
@@ -12,7 +26,7 @@
 
 - 明确主接入：`linkly-ai -> http://127.0.0.1:60606/mcp`。
 - 明确 CLI 只用于 `linkly status`、`linkly doctor` 等诊断动作，不是主接入依赖。
-- 明确前置条件：Linkly AI Desktop 必须运行，并且已在 Settings → Libraries 添加资料库。
+- 明确前置条件：Linkly AI Desktop 必须运行，并配置可供检索的本地资料来源；监听文件夹与知识库的准确分工在 v0.6.8 中补充校准。
 - 明确暂不启用 Remote Tunnel；本机 Hermes/Codex 直连 `127.0.0.1`。
 
 ---

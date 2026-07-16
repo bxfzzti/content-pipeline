@@ -14,7 +14,7 @@
 | Home Assistant Blog | 英文RSS | ✅ | ~1条 | >90%（智能家居平台） |
 | cnBeta | 中文RSS | ✅ | ~150条 | <1%（几乎无家居） |
 | SMZDM | cookie | ⚠️ | 未知 | 需cookie+RSSHub路由 |
-| 小红书 | cookie/MCP | ⚠️ | 5-10条 | UGC内容，需搜索关键词 |
+| 小红书 | 禁用个人登录态 | ❌ | 0条 | 仅接受用户主动提供的材料或公开索引 |
 
 ## 中文家居媒体RSS调研结果
 
@@ -30,7 +30,7 @@
 **结论：** 中文家居媒体几乎全军覆没（无RSS），家居品类数据源只能靠：
 1. 国际智能家居RSS（TheVerge系 + HomeKit News + Home Assistant）— 英文，需英文关键词
 2. IT之家/爱范儿少量中文家居内容 — 中文关键词
-3. SMZDM + 小红书作为备选 — 需cookie/MCP
+3. SMZDM + 用户主动提供的小红书材料作为备选；禁止 Cookie/MCP 登录态
 
 ## 过滤脚本修复记录
 
@@ -45,5 +45,5 @@
 ## 进一步扩充方向
 
 1. **SMZDM cookie方案**：配好cookie后 `/smzdm/ranking/pinlei/11` 可用，预期+10-20条好价
-2. **小红书搜索**：`xhs_search` 搜"扫地机评测""智能家居"，预期+5-10条UGC
+2. **小红书材料**：只处理用户主动提供的链接、截图或导出内容，不运行 `xhs_search`
 3. **RSSHub扩展**：`/huxiu/channel/21`（虎嗅车与出行）虽是汽车但偶有智能家居内容

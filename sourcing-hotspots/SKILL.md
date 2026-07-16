@@ -10,6 +10,29 @@ description: >
 
 启动 hot-aggregator 服务 + 国际RSS源，拉取国内外实时热点数据，**按四品类体系（汽车 + 3C数码 + AI + 家居）分别过滤**，输出 8-12 条跨品类精选热点。
 
+## 两分钟全覆盖入口（最高优先级）
+
+每次热点抓取统一运行：
+
+```bash
+/Users/xxqq/.hermes/hermes-agent/.venv/bin/python \
+  sourcing-hotspots/scripts/full_hotspot_run.py \
+  --output-dir /tmp/article-pipeline \
+  --deadline-seconds 120
+```
+
+- 120 秒内结束热点阶段，不等待尾部慢源。
+- 每个来源必须标记为 `live`、`cache`、`unavailable` 或 `disabled`。
+- 服务健康时复用现有进程，只有健康检查失败时才启动，不再每次强制杀进程。
+- 热点阶段只抓取、过滤和筛选，不运行 Linkly、zvec、深度网页核验、评论研究或生图。
+- 产品体验结果写入本地后，飞书同步使用 `--sync-existing`，不得重新抓取。
+
+## 禁止个人小红书登录态（最高优先级）
+
+热点和研究阶段不得调用 `xhs-cli`、`xiaohongshu-mcp`、浏览器 Cookie、CDP 登录页、`~/.hermes/cookies/xhs.json` 或其他小红书登录态。即使只搜索公开笔记，也不得借用用户账号。
+
+只允许处理用户主动提供的小红书链接、截图、导出内容，以及无需个人登录态的公开搜索索引。此规则覆盖本文所有历史说明；历史段落中出现的小红书 Cookie、MCP 或 CDP 方案均视为停用记录，不得执行。
+
 ## 产品体验线（2026-07-09 新增）
 
 热点线之外，并行维护一条「产品体验/开箱/吐槽/横评」线，专门服务小红书二创选题。两条线不要混写：
@@ -42,7 +65,7 @@ description: >
 
 ```bash
 python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output
-python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output --sync-lark --base-token <base_token> --table-id <table_id>
+python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output --sync-lark --sync-existing --base-token <base_token> --table-id <table_id>
 ```
 
 相关文件：
@@ -59,23 +82,15 @@ python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output --s
 > - **家居补充RSS**（72h窗口）— IT之家RSS + 爱范儿RSS + TheVerge SmartHome + HomeKit News + Home Assistant Blog（hot-aggregator天然缺失家居内容）
 > - **Twitter AI大佬追踪** — 用浏览器+cookie访问Twitter搜索，追踪AI行业核心声音（sama/karpathy/DarioAmodei/DrJimFan/ylecun/elonmusk/AndrewYNg/JeffDean/ilyasut），cookie存储在 `~/.hermes/cookies/twitter.json`
 > - **什么值得买（SMZDM）** — 用cookie访问SMZDM好价/资讯，补充家居/3C品类数据，cookie存储在 `~/.hermes/cookies/smzdm.json`
-> - `xhs_search` — 小红书搜索（可选，超时即跳过），cookie存储在 `~/.hermes/cookies/xhs.json`
-> - **小红书**（cookie登录态）— `~/.hermes/cookies/xhs.json`，可用于搜索汽车/数码/AI相关内容
 > - **Twitter/X**（cookie登录态）— `~/.hermes/cookies/twitter.json`，可用于追踪AI行业大佬动态（替代关键词过滤）
-> - `xhs_search` — 小红书搜索（可选，超时即跳过），cookie存储在 `~/.hermes/cookies/xhs.json`
 > - **公众号搜索**（辅助源）— `wechat_downloader.py search "关键词" --no-read`，通过搜狗搜索微信公众号文章标题。用于发现 RSS/hot-aggregator 覆盖不到的深度内容。详见 `wechat_downloader` skill。
 >
 > ⚠️ **搜索引擎不可用**：DDG/Google/Bing均屏蔽服务器IP，热点搜索只能依赖RSS+hot-aggregator+cookie登录态平台。
 
 ## ⚠️ 执行规范（每次必须遵守）
 
-1. **⚠️ 重启优先（必须）**：每次抓取前先杀掉旧进程再重启，确保拿最新数据。旧进程缓存 `fromCache=True` 会导致热点过时。
-   ```bash
-   lsof -ti:6688 | xargs kill -9 2>/dev/null; sleep 2
-   cd ~/.openclaw/workspace/hot-aggregator && node --import tsx index.mjs  # background=true
-   sleep 15 && curl -s http://localhost:6688/api/all -o /tmp/hotspots.json
-   ```
-   验证：检查 `updateTime` 在5分钟内，所有有数据的平台 `fromCache` 应为 `False`。2. **失败不重试同一路径**：execute_code 第一次失败→改用 terminal + 脚本文件。XHS MCP 超时1次→跳过，用其他数据源。
+1. **健康检查优先**：服务健康时直接复用；只有不可用时才启动。来源返回缓存时必须标记缓存时间。
+2. **失败不重试同一路径**：单来源失败一次即读取最近有效缓存，没有缓存则标记 `unavailable`。
 3. **大数据量先存文件**：hot-aggregator 返回 ~1.6MB，必须 `curl -o /tmp/hotspots.json` 再离线处理，禁止 pipe 直接解析。
 4. **输出纪律：** 只输出两段式精选到对话（我关注的热点 + 全网热点）。原始数据、工具调用过程、中间结果不进聊天。KOL观点在 angle-selection 环节采集，不在抓热点阶段输出。
 5. **⚠️ 必须覆盖多品类**：内容策略是 30%汽车+20%数码科技+20%家居+15%热点+15%AI。过滤时必须跑三类关键词体系，不能只跑汽车。用户明确要求过：「应该不只有汽车，科技的产品也是一个范畴」。
@@ -283,13 +298,13 @@ python3 ~/.hermes/scripts/pa_web_extract.py --twitter --keyword "GPT" --output /
 
 追踪的AI大佬名单：见上方Twitter AI大佬追踪章节。
 
-**Cookie存储：** `~/.hermes/cookies/` 下 xhs.json/twitter.json/smzdm.json，用于浏览器CDP登录态访问各平台。
+**Cookie存储：** Twitter/SMZDM 的既有配置只用于各自明确允许的适配器；内容创作流禁止读取任何小红书 Cookie。
 
-**数据源优先级：** hot-aggregator(国内69平台) > 国际RSS(48h窗口) > Twitter AI大佬(cookie+CDP) > 家居RSS(IT之家+爱范儿) > SMZDM(cookie) > RSSHub(少数派矩阵+36氪) > XHS(cookie+CDP)
+**数据源优先级：** hot-aggregator(国内69平台) > 国际RSS(48h窗口) > Twitter AI大佬(cookie+CDP) > 家居RSS(IT之家+爱范儿) > SMZDM > RSSHub(少数派矩阵+36氪)。个人登录态小红书不在来源清单中。
 
 **⚠️ Twitter CDP搜索返回空页面（2026-06-01）：** 页面导航成功（URL正确），但 `document.body.innerText.length` 为0。可能原因：(1) Twitter/X要求登录态才能显示搜索结果；(2) cookie注入方式不正确（cookie.json格式可能与CDP setCookie不兼容）；(3) 搜索结果页需要JS渲染但CDP未等待。**故障排除步骤：** 先检查bodyLen是否>0；如果为0，尝试先访问x.com/home确认登录态，再导航搜索页；仍然为空则跳过Twitter源。
 
-**数据源优先级：** hot-aggregator(国内69平台) > 国际RSS(48h窗口，TheVerge系最可靠) > 家居RSS(IT之家+爱范儿，不稳定) > SMZDM(cookie，正则不可靠) > Twitter(CDP，需登录态) > XHS(超时即跳)
+**数据源优先级：** hot-aggregator(国内69平台) > 国际RSS(48h窗口，TheVerge系最可靠) > 家居RSS(IT之家+爱范儿，不稳定) > SMZDM > Twitter(CDP，需单独授权)。个人登录态小红书永久排除。
 **搜索引擎不可用**（DDG/Google/Bing均屏蔽服务器IP），不要浪费时间尝试。
 **⚠️ 数据时效性（2026-06-07 更新）：** 
 - 时间窗口已从48h放宽到**72h**——热榜数据75%超过48h，放宽后保留量从591→627条，多捞出趋势类话题（新能源车涨价、二手油车崩盘等）。
@@ -332,7 +347,7 @@ python3 ~/.hermes/scripts/pa_web_extract.py --twitter --keyword "GPT" --output /
 - **噪音平台漏网**：huggingFace技术博客匹配"Intel""NVIDIA"。修法：噪音平台（huggingFace/nodeseek/linuxdo/csdn/v2ex/ngabbs/douban-group/tieba/newsmth/hostloc/guokr/hackernews）的3C条目**全部排除**，只对AI品类保留。
 - **结论：3C需要三层过滤**：(1)品牌+事件双命中 → (2)排除游戏/汽车/OpenAI博客 → (3)排除噪音平台。
 
-**⚠️ 家居品类扩充后仍偏少（2026-06-04 更新）：** 经扩充3个国际家居RSS源（TheVerge-SmartHome/HomeKit-News/HomeAssistant）+ 英文关键词后，家居品类从2条提升到**6条**（含追觅扫地机/SwitchBot收购/Matter窗帘电机等）。但仍远少于汽车(12)/3C(30)/AI(28)。根因：中文家居媒体（好好住/住小帮/一条/良仓）**全都没有RSS**，家居数据只能靠国际智能家居媒体+IT之家/爱范儿少量内容。选题筛选时家居<10条是常态，不强求配比。进一步扩充方向：小红书搜索/SMZDM cookie方案。
+**⚠️ 家居品类扩充后仍偏少（2026-06-04 更新）：** 经扩充3个国际家居RSS源（TheVerge-SmartHome/HomeKit-News/HomeAssistant）+ 英文关键词后，家居品类从2条提升到**6条**（含追觅扫地机/SwitchBot收购/Matter窗帘电机等）。但仍远少于汽车(12)/3C(30)/AI(28)。根因：中文家居媒体（好好住/住小帮/一条/良仓）**全都没有RSS**，家居数据只能靠国际智能家居媒体+IT之家/爱范儿少量内容。选题筛选时家居<10条是常态，不强求配比；进一步扩充使用 SMZDM 和公开 RSS，不使用个人登录态小红书。
 
 **⚠️ 新增可用RSS源（2026-06-04 验证）：** Engadget(20条/天, 3C消费电子)、GSMArena(20条/天, 手机评测)、cnBeta(150条/天, 科技综合)。已纳入国际RSS抓取列表。
 
@@ -552,21 +567,11 @@ for brand in ["乐道", "理想", "小米汽车", "问界", "比亚迪"]:
 
 1. **调服务前先健康检查：** `curl -s --connect-timeout 3 http://localhost:6688/api/all -o /dev/null -w "%{http_code}"`，不通就尝试启动，启动后仍不通就跳过
 2. **大数据量存文件再处理：** hot-aggregator 返回 ~1.6MB，禁止 pipe 到 Python 直接解析（会截断）。必须先 `curl -o /tmp/hotspots.json`，再离线 Python 处理
-3. **XHS MCP 超时1次即跳过：** 先检查 `curl -s --connect-timeout 3 http://localhost:18060/health`，不通就启动（`cd ~/xiaohongshu-mcp && ./xiaohongshu-mcp-darwin-arm64`），超时1次就放弃用其他数据源
+3. **禁止个人小红书登录态：** 不启动、不健康检查、不调用任何小红书 MCP、CLI、Cookie 或 CDP 路径。
 4. **输出只发精选结果：** 原始数据不进对话，只输出最终 5-8 条精选 + 分类统计
 5. **过滤时排除噪音：** 跳过含"喜加一"、"Epic"、"Steam"、"源码"、"开源软件"等无关条目
 
-**⚠️ XHS MCP 已更新到最新版（xpzouying/xiaohongshu-mcp）：** 二进制在 `~/xiaohongshu-mcp/xiaohongshu-mcp-darwin-arm64`，端口 18060。更新方式：从 GitHub releases 下载最新 darwin-arm64.tar.gz 解压覆盖。cookie 在 `~/xiaohongshu-mcp/cookies.json`。
-
-**⚠️ XHS MCP 搜索不稳定（2026-06-08 实测）：** `search_feeds` 接口频繁超时（30秒+），成功率约 10%。`list_feeds`（首页推荐）偶尔可用但不稳定。MCP **没有热搜榜/热点榜工具**——只有搜索和首页推荐。搜关键词返回的是搜索结果排序（相关性），**不是实时热点排名**。
-
-**⚠️ XHS 登录态：** MCP 的 cookie 与浏览器 cookie 是独立的。MCP 未登录时可用 `get_login_qrcode` 生成二维码扫码登录。浏览器 CDP 的 XHS tab 有独立的 `a1` cookie 但没有 `web_session`（HttpOnly），无法直接用于 API 调用。
-
-**⚠️ XHS 搜索 ≠ 热点（2026-06-08 教训）：** 用户问"小红书有什么热点"时，用关键词搜索返回的只是匹配结果，不是热点排名。正确做法：(1) 先尝试 MCP `list_feeds` 抓首页推荐；(2) 失败则用 CDP 浏览器抓首页；(3) 都不行则诚实告知"没抓到实时热点"，不要把搜索结果包装成热点。
-
-**⚠️ XHS MCP search_feeds 全面超时（2026-06-08 实测）：** MCP 的 search_feeds 接口极不稳定，10次搜索中约8次超时（30秒+）。list_feeds（首页推荐）偶尔能成功。根因可能是 XHS 的反爬机制或 MCP 内部的浏览器渲染太慢。**备选方案：用 CDP 直接在浏览器里导航到搜索页，从 DOM 提取结果**——虽然不是真正的"热点排名"，但能拿到按时间排序的最新内容。**最靠谱的方式：让用户截图小红书 APP 的热搜榜。**
-
-**⚠️ XHS 搜索结果 ≠ 热点（2026-06-08 教训）：** 用关键词搜索 XHS 返回的是「匹配关键词的结果」，按相关性排序，不是按热度排序。这些结果可能包含数月前的旧帖，不能当作「今天的热点」。要拿到真正的实时热点，需要 XHS 热搜榜 API（MCP 不支持）或用户手动截图。
+**小红书历史方案已停用：** 过去使用过 MCP、CLI、Cookie 和 CDP，但这些路径会借用个人登录态，现已全部禁止。小红书搜索结果也不是热榜，不得作为热点强度依据。
 
 ## 两段式热点输出
 

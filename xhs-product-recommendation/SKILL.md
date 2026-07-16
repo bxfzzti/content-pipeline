@@ -43,7 +43,7 @@ description: >
 - 京东商品评价（用浏览器CDP访问）
 - 淘宝商品评价（用浏览器CDP访问）
 - SMZDM用户评价（用cookie访问）
-- 小红书用户实拍/评价（用cookie访问）
+- 用户主动提供的小红书链接、截图或导出评价；禁止使用个人小红书 Cookie、CLI、MCP 或 CDP 登录态
 
 ## Step 3: 写正文
 

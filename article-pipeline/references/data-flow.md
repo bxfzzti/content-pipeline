@@ -8,6 +8,8 @@
 
 子 Agent 只在多候选筛选、质量审查、多方案并行时作为独立视角介入；默认数据流不依赖子 Agent 常驻接力。
 
+Linkly AI 试点作为本地资料检索层接入，只在历史资料检索、写正文前事实补充、质检反查三个位置使用；不进入外部热点抓取，不替代 zvec 的结构化记忆。
+
 每两个 Skill 之间传递的数据：
 
 ```
@@ -31,9 +33,9 @@
         ▼
 ┌─────────────────┐
 │ framing-article   │ ───→ 写作思路（认知交付卡+定调+引用块+论点大纲+收尾）
-└─────────────────┘   ┌──────────────┐
-        │  ←──【用户确认思路】 │ writing-style │（风格参考，按需加载）
-        ▼               └──────────────┘
+└─────────────────┘   ┌──────────────┐      ┌──────────────┐
+        │  ←──【用户确认思路】 │ writing-style │      │ Linkly AI    │（本地资料/brief/报告，按需检索）
+        ▼               └──────────────┘      └──────────────┘
 ┌─────────────────┐
 │ title-craft       │ ───→ 标题方案（5-8个，跨3种触发器）
 └─────────────────┘
@@ -91,6 +93,7 @@
 | screening-topics | 原始热点列表 + 产品体验候选池 | 选题建议 | /tmp/article-pipeline/02-topic-suggestion.md | 汽车行业/流水线/02-topic-suggestion.md |
 | angle-selection | 选题方向 | 角度选择 | /tmp/article-pipeline/02b-angle-selection.md | 汽车行业/流水线/02b-angle-selection.md |
 | framing-article | 选题方向+角度选择 | 写作思路 | /tmp/article-pipeline/03-article-framework.md | 汽车行业/流水线/03-article-framework.md |
+| Linkly AI（按需） | 本地历史资料/产品说明书/brief/PDF报告 | 本地资料摘录+来源文件 | /tmp/article-pipeline/03c-local-evidence.md | 汽车行业/流水线/03c-local-evidence.md |
 | title-craft | 写作思路 | 标题方案 | /tmp/article-pipeline/03b-title-options.md | 汽车行业/流水线/03b-title-options.md |
 | writing-draft | 写作思路 | 完整正文 | /tmp/article-pipeline/04-article-draft.md | 汽车行业/流水线/04-article-draft.md |
 | polishing-writing | 完整正文 | 质检报告 | /tmp/article-pipeline/05-quality-report.md | 汽车行业/流水线/05-quality-report.md |

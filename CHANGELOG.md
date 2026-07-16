@@ -4,6 +4,19 @@
 
 ---
 
+## v0.6.6 — 2026-07-16: Linkly AI 本地资料检索试点
+
+**核心变更**：启动 Linkly AI 试点，将其定位为本地资料检索层，用于历史资料检索、写作前事实补充和质检反查。
+
+### 变更内容
+
+- README 新增 Linkly AI 与 zvec、daily-hot-mcp 的分工说明。
+- `article-pipeline/SKILL.md` 新增 Linkly AI 试点边界：不进入外部热点抓取，不替代 zvec。
+- `references/data-flow.md` 增加按需本地证据文件 `/tmp/article-pipeline/03c-local-evidence.md`。
+- 本机已安装 Linkly AI CLI/Desktop，并注册 Codex MCP：`linkly-ai -> http://127.0.0.1:60606/mcp`。
+
+---
+
 ## v0.6.5 — 2026-07-10: README 金字塔结构重写
 
 **核心变更**：重写 README 的使用描述，按「它是什么 → 解决什么问题 → 怎么工作 → 输出什么 → 核心能力 → 运行方式」组织信息。

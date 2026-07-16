@@ -11,12 +11,10 @@ import re
 import subprocess
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from typing import Any, Awaitable, Callable
 
 
 KEYWORDS = {
@@ -45,6 +43,14 @@ FIELDS = [
     "状态",
     "今日新增",
 ]
+
+
+@dataclass
+class KeywordResult:
+    group: str
+    keyword: str
+    items: list[dict[str, Any]]
+    error: str = ""
 
 
 def clean(value: Any, limit: int | None = None) -> str:
@@ -87,35 +93,47 @@ def summarize(item: dict[str, Any]) -> tuple[str, str]:
     return excerpt, angle
 
 
-async def fetch_topics(limit_per_keyword: int) -> tuple[list[dict[str, Any]], list[tuple[str, str, int, int, float, float]]]:
+async def collect_keyword_results(
+    call_keyword: Callable[[str, str, int], Awaitable[list[dict[str, Any]]]],
+    limit_per_keyword: int,
+    concurrency: int,
+    timeout_seconds: float,
+) -> list[KeywordResult]:
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def fetch_one(group: str, keyword: str) -> KeywordResult:
+        try:
+            async with semaphore:
+                items = await asyncio.wait_for(
+                    call_keyword(group, keyword, limit_per_keyword),
+                    timeout=max(0.1, timeout_seconds),
+                )
+            return KeywordResult(group, keyword, items)
+        except asyncio.TimeoutError:
+            return KeywordResult(group, keyword, [], f"timeout after {timeout_seconds}s")
+        except Exception as exc:
+            return KeywordResult(group, keyword, [], str(exc))
+
+    jobs = [fetch_one(group, keyword) for group, keywords in KEYWORDS.items() for keyword in keywords]
+    return await asyncio.gather(*jobs)
+
+
+def rank_topic_results(
+    keyword_results: list[KeywordResult],
+) -> tuple[list[dict[str, Any]], list[tuple[str, str, int, int, float, float]]]:
     rows: list[dict[str, Any]] = []
     keyword_stats: list[tuple[str, str, int, int, float, float]] = []
-
-    async with streamablehttp_client("http://127.0.0.1:8000/mcp") as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            for group, keywords in KEYWORDS.items():
-                for keyword in keywords:
-                    result = await session.call_tool(
-                        "search-product-experience-posts",
-                        {
-                            "keyword": keyword,
-                            "limit": limit_per_keyword,
-                            "include_deals": False,
-                            "sources": "smzdm",
-                        },
-                    )
-                    payload = json.loads("".join(getattr(c, "text", str(c)) for c in result.content))
-                    items = [x for x in payload if isinstance(x, dict) and x.get("source") != "meta"]
-                    for item in items:
-                        item["_keyword"] = keyword
-                        item["_group"] = group
-                        rows.append(item)
-                    scores = [to_int(x.get("creative_score")) for x in items]
-                    top = max(scores, default=0)
-                    avg = round(sum(scores[:5]) / max(len(scores[:5]), 1), 1) if scores else 0.0
-                    stable = round(avg + min(len(items), 8) * 1.5, 1)
-                    keyword_stats.append((group, keyword, len(items), top, avg, stable))
+    for result in keyword_results:
+        items = result.items
+        for item in items:
+            item["_keyword"] = result.keyword
+            item["_group"] = result.group
+            rows.append(item)
+        scores = [to_int(x.get("creative_score")) for x in items]
+        top = max(scores, default=0)
+        avg = round(sum(scores[:5]) / max(len(scores[:5]), 1), 1) if scores else 0.0
+        stable = round(avg + min(len(items), 8) * 1.5, 1)
+        keyword_stats.append((result.group, result.keyword, len(items), top, avg, stable))
 
     best: dict[str, dict[str, Any]] = {}
     for item in rows:
@@ -130,6 +148,46 @@ async def fetch_topics(limit_per_keyword: int) -> tuple[list[dict[str, Any]], li
         item["_rank"] = index
         item["_keyword_stable_score"] = stable_by_keyword.get(item.get("_keyword"), 0.0)
     return ranked, keyword_stats
+
+
+async def fetch_topics(
+    limit_per_keyword: int,
+    concurrency: int = 5,
+    timeout_seconds: float = 12.0,
+) -> tuple[list[dict[str, Any]], list[tuple[str, str, int, int, float, float]]]:
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+
+    async with streamablehttp_client("http://127.0.0.1:8000/mcp") as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            async def call_keyword(_group: str, keyword: str, limit: int) -> list[dict[str, Any]]:
+                result = await session.call_tool(
+                    "search-product-experience-posts",
+                    {
+                        "keyword": keyword,
+                        "limit": limit,
+                        "include_deals": False,
+                        "sources": "smzdm",
+                    },
+                )
+                payload = json.loads("".join(getattr(c, "text", str(c)) for c in result.content))
+                return [x for x in payload if isinstance(x, dict) and x.get("source") != "meta"]
+
+            results = await collect_keyword_results(call_keyword, limit_per_keyword, concurrency, timeout_seconds)
+    return rank_topic_results(results)
+
+
+def load_existing_rows(path: Path) -> tuple[list[str], list[list[Any]]]:
+    if not path.exists():
+        raise FileNotFoundError(f"existing product rows not found: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    fields = payload.get("fields")
+    rows = payload.get("rows")
+    if fields != FIELDS or not isinstance(rows, list):
+        raise ValueError(f"invalid product rows file: {path}")
+    return fields, rows
 
 
 def build_base_rows(items: list[dict[str, Any]], fetched_at: str, max_rows: int) -> list[list[Any]]:
@@ -315,14 +373,26 @@ async def amain() -> None:
     parser.add_argument("--limit-per-keyword", type=int, default=10)
     parser.add_argument("--max-rows", type=int, default=80)
     parser.add_argument("--sync-lark", action="store_true")
+    parser.add_argument("--sync-existing", action="store_true")
+    parser.add_argument("--concurrency", type=int, default=5)
+    parser.add_argument("--keyword-timeout", type=float, default=12.0)
     parser.add_argument("--base-token", default=os.environ.get("HERMES_TOPICS_BASE_TOKEN", ""))
     parser.add_argument("--table-id", default=os.environ.get("HERMES_TOPICS_TABLE_ID", "选题池"))
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    if args.sync_existing:
+        if not args.sync_lark:
+            raise SystemExit("--sync-existing requires --sync-lark")
+        if not args.base_token:
+            raise SystemExit("--sync-existing requires --base-token or HERMES_TOPICS_BASE_TOKEN")
+        _, rows = load_existing_rows(output_dir / "smzdm_product_topics_rows.json")
+        sync_to_lark(args.base_token, args.table_id, rows, Path.cwd())
+        return
+
     fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    items, keyword_stats = await fetch_topics(args.limit_per_keyword)
+    items, keyword_stats = await fetch_topics(args.limit_per_keyword, args.concurrency, args.keyword_timeout)
     rows = build_base_rows(items, fetched_at, args.max_rows)
 
     (output_dir / "smzdm_product_topics_rows.json").write_text(

@@ -1,21 +1,57 @@
 ---
 name: sourcing-hotspots
 description: >
-  热点数据抓取。启动 hot-aggregator 服务并调用多平台 API 拉取微博/知乎/抖音/头条/百度/B站 实时热点数据。
-  输出原始热点列表。
-  Triggers — "抓热点", "看看今天有什么热点", "热搜", "今天的热点", "有什么热点", "现在热点", "scan hotspots", "fetch trending"
+  内容创作流内部的热点数据抓取阶段。仅在主编排调用，或用户明确要求“只抓原始热点数据”时单独运行。
+  输出机器可校验的全网分类和关注方向数据，不负责选题评分。
+  Triggers — "只抓热点数据", "只刷新热点源", "只跑热点抓取", "scan hotspot data", "fetch trending data"
 ---
 
 # sourcing-hotspots
 
-启动 hot-aggregator 服务 + 国际RSS源，拉取国内外实时热点数据，**按四品类体系（汽车 + 3C数码 + AI + 家居）分别过滤**，输出 8-12 条跨品类精选热点。
+复用或按需启动 hot-aggregator 服务，拉取国内外实时热点数据，先整理全网分类，再整理汽车媒体、3C 数码、智能家居三个关注方向。统一契约见 `../article-pipeline/references/hotspot-output-contract.md`。
+
+## ⚠️ 输出格式铁律：必须两段式（最高优先级，2026-07-18 教训）
+
+**每次输出热点必须分两大段，缺一不可。** 常见错误是只输出"我关注的热点"而漏掉"全网热点"——用户已两次指出此问题（2026-06-17、2026-07-18），不可再犯。
+
+### 第一大段：全网热点（不限方向）
+
+从 hot-aggregator 原始数据中提取跨 3+ 平台的高热度话题，排除关注领域后，按子分类呈现：
+
+| 分类 | 内容 |
+|------|------|
+| 社会/民生 | 自然灾害、政策变化、社会事件 |
+| 国际/政治 | 外交、国际冲突、领导人动态 |
+| 财经 | 股市、汇市、大宗商品、企业财报 |
+| 体育/世界杯 | 赛事结果、球星动态 |
+| 文娱 | 影视票房、综艺、八卦 |
+| 健康 | 疾病预警、医疗辟谣 |
+
+### 第二大段：我关注的方向
+
+按用户的内容矩阵分三个子类：
+
+| 分类 | 关键词体系 |
+|------|-----------|
+| (a) 汽车媒体 | 品牌+事件双命中，评分含50分制 |
+| (b) 3C 数码 | 品牌+事件双命中，排除游戏/汽车/OpenAI |
+| (c) 智能家居 | 品牌+产品+事件，中英文关键词 |
+
+### ⚠️ 自检清单（输出前逐项确认）
+
+- [ ] 第一大段"全网热点"是否已输出？
+- [ ] 全网热点是否按子分类（社会/国际/财经/体育/文娱/健康）列出了具体话题？
+- [ ] 第二大段"我关注的方向"是否按 (a)(b)(c) 三个子类分别列出？
+- [ ] 是否标注了每个话题的热度（🔥）和跨平台数？
+
+**如果漏掉第一大段，用户会直接指出——这件事已经发生过两次。不要第三次。**
 
 ## 两分钟全覆盖入口（最高优先级）
 
 每次热点抓取统一运行：
 
 ```bash
-/Users/xxqq/.hermes/hermes-agent/.venv/bin/python \
+~/.hermes/hermes-agent/.venv/bin/python \
   ~/.hermes/skills/sourcing-hotspots/scripts/full_hotspot_run.py \
   --output-dir /tmp/article-pipeline \
   --deadline-seconds 120
@@ -92,8 +128,8 @@ python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output --s
 1. **健康检查优先**：服务健康时直接复用；只有不可用时才启动。来源返回缓存时必须标记缓存时间。
 2. **失败不重试同一路径**：单来源失败一次即读取最近有效缓存，没有缓存则标记 `unavailable`。
 3. **大数据量先存文件**：hot-aggregator 返回 ~1.6MB，必须 `curl -o /tmp/hotspots.json` 再离线处理，禁止 pipe 直接解析。
-4. **输出纪律：** 只输出两段式精选到对话（我关注的热点 + 全网热点）。原始数据、工具调用过程、中间结果不进聊天。KOL观点在 angle-selection 环节采集，不在抓热点阶段输出。
-5. **⚠️ 必须覆盖多品类**：内容策略是 30%汽车+20%数码科技+20%家居+15%热点+15%AI。过滤时必须跑三类关键词体系，不能只跑汽车。用户明确要求过：「应该不只有汽车，科技的产品也是一个范畴」。
+4. **输出纪律：** 只输出“全网热点 → 我关注的方向”到对话。原始数据、工具调用过程、中间结果不进聊天。KOL观点在 angle-selection 环节采集。
+5. **关注领域口径：** 固定为汽车媒体、3C 数码、智能家居。AI 进入全网热点的科技/AI 分类；与硬件产品直接相关时可同时归入 3C。
 
 ## 启动服务（如未运行）
 
@@ -526,7 +562,8 @@ python3 scripts/search_car_keywords.py --hours 24 --max-searches 30 --output /tm
 # 在execute_code中用web_search跑关键词搜索
 from hermes_tools import web_search
 import json
-data = json.load(open('/Users/xxqq/.hermes/skills/sourcing-hotspots/references/car-model-keywords.json'))
+from pathlib import Path
+data = json.loads((Path.home() / '.hermes/skills/sourcing-hotspots/references/car-model-keywords.json').read_text(encoding='utf-8'))
 for brand in ["乐道", "理想", "小米汽车", "问界", "比亚迪"]:
     r = web_search(f"{brand} 上市 发布 {datetime.now().strftime('%Y年%m月')}", limit=3)
     # process results...
@@ -557,7 +594,7 @@ for brand in ["乐道", "理想", "小米汽车", "问界", "比亚迪"]:
 
 ## 已知数据质量问题
 
-**hot-aggregator 缓存问题（根因已修复 2026-06-01）：** 服务长时间运行后，大部分平台返回 `fromCache: True` 的陈旧数据。**每次抓取必须先 kill 再重启**，不能直接复用旧进程。健康检查脚本：`~/.hermes/scripts/check_hot_aggregator.py`（每2小时自动检查，缓存超30分钟自动重启）。**单独依赖 hot-aggregator 不够**，需配合国际RSS源补充。
+**hot-aggregator 缓存处理：** 先健康检查并复用服务。来源返回 `fromCache: True` 时标记缓存时间；缓存超过 30 分钟由健康检查脚本决定是否重启。主 Agent 不得另行启动第二个服务进程。
 
 **微博热搜 API 限制：** `weibo.com/ajax/side/hotSearch` 返回 `band_list: []`，被反爬。直接搜微博热点不可行，需通过 DuckDuckGo 或 tophub.today 绕行。
 
@@ -568,37 +605,16 @@ for brand in ["乐道", "理想", "小米汽车", "问界", "比亚迪"]:
 1. **调服务前先健康检查：** `curl -s --connect-timeout 3 http://localhost:6688/api/all -o /dev/null -w "%{http_code}"`，不通就尝试启动，启动后仍不通就跳过
 2. **大数据量存文件再处理：** hot-aggregator 返回 ~1.6MB，禁止 pipe 到 Python 直接解析（会截断）。必须先 `curl -o /tmp/hotspots.json`，再离线 Python 处理
 3. **禁止个人小红书登录态：** 不启动、不健康检查、不调用任何小红书 MCP、CLI、Cookie 或 CDP 路径。
-4. **输出只发精选结果：** 原始数据不进对话，只输出最终 5-8 条精选 + 分类统计
+4. **输出只发整理结果：** 原始数据不进对话；按统一契约输出全网分类和三个关注方向。5-8 条限制只适用于后续选题建议，不适用于热点全景
 5. **过滤时排除噪音：** 跳过含"喜加一"、"Epic"、"Steam"、"源码"、"开源软件"等无关条目
 
 **小红书历史方案已停用：** 过去使用过 MCP、CLI、Cookie 和 CDP，但这些路径会借用个人登录态，现已全部禁止。小红书搜索结果也不是热榜，不得作为热点强度依据。
 
-## 两段式热点输出
+## 两层热点输出
 
-每次抓热点输出两个部分：
-
-### 1. 我关注的热点
-
-来源：hot-aggregator + RSS + 关键词搜索
-执行：`python3 scripts/filter_all_categories.py /tmp/hotspots.json`
-输出：汽车/3C/AI/家居四品类精选
-
-### 2. 全网热点
-
-来源：filter脚本自动检测（跨3+平台未归类条目）
-执行：同上，自动输出在筛选结果末尾
-输出：不在四品类内但热度很高的话题
+执行 `python3 scripts/filter_all_categories.py /tmp/hotspots.json` 后，必须直接使用脚本生成的 `01-hotspots-presentation.json` 和 `.md`。顺序、分类、字段和验收条件只以 `../article-pipeline/references/hotspot-output-contract.md` 为准，不在本文件维护第二套模板。
 
 **KOL微博观点不在抓热点阶段采集。** 在 angle-selection 的「第零步」采集（选题确认后），用于丰富角度和定调。
-
-**两部分合并输出，格式：**
-```
---- 我关注的热点 ---
-（四品类内容）
-
---- 全网热点 ---
-（溢出内容）
-```
 
 ### 3. 结构化输出（供筛选Agent使用）+ 数据质量评估
 

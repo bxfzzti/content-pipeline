@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-四品类热点过滤器 v3：汽车 + 3C数码 + AI + 家居
-含跨品类品牌分流、3C黑名单、AI收紧规则、噪音平台硬排除
+两层热点整理器：全网分类 + 三个关注方向（汽车、3C数码、智能家居）
+内部仍识别 AI，用于全网“科技/AI”分类，不作为第四个固定关注栏目。
 
 用法:
   python3 filter_all_categories.py /tmp/hotspots.json [rss_intl.json] [rss_home.json]
 
-输出: 各品类条目 + 汇总统计，结果保存到 /tmp/filtered_daily.json
+输出: 先全网分类、再三个关注方向，并生成机器可校验的 presentation 产物。
 """
 import json, sys, re
+from difflib import SequenceMatcher
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 domestic_file = sys.argv[1] if len(sys.argv) > 1 else "/tmp/hotspots.json"
 intl_file = sys.argv[2] if len(sys.argv) > 2 else None
 home_file = sys.argv[3] if len(sys.argv) > 3 else None
+output_dir = Path(sys.argv[4]) if len(sys.argv) > 4 else Path('/tmp/article-pipeline')
 
 # ===== 噪音词（匹配即丢弃）=====
 NOISE_WORDS = [
@@ -129,12 +132,11 @@ def classify_cross_brand(text, brand):
     return None  # 无法归类 → 丢弃
 
 def classify(title, desc, source):
-    # 新闻聚合源只用标题匹配，避免desc中的无关话题干扰
-    ROUNDUP_PLUS = ROUNDUP_SOURCES | {'Wired', 'ArsTechnica', 'MIT-TR', 'TechCrunch', 'TheVerge'}
-    if source in ROUNDUP_PLUS:
-        text = title
-    else:
-        text = title + ' ' + desc
+    # 关注领域必须由标题本身命中。聚合源和长摘要经常同时包含
+    # 多条新闻，用摘要匹配会把社会新闻误分到汽车/3C/家居。
+    text = title
+    if source in ROUNDUP_SOURCES and (re.search(r'早报|晚报|一周回顾', title) or title.count('；') >= 2):
+        return None, [], []
     if is_noise(title):
         return None, [], []
 
@@ -187,12 +189,14 @@ def classify(title, desc, source):
 
     # 家居（品牌或品类命中，高频词需上下文）
     home_brands = r'追觅|石头|云鲸|科沃斯|米家|Aqara|绿米|松下|九牧|徕芬|添可|惠达|海尔|美的|格力|飞利浦|西门子|博世|方太|华帝|万和|林内|能率|摩恩|TOTO|科勒|箭牌|恒洁|安华|Dreame|Roborock|Ecovacs|Narwal|Dyson|Tineco|SwitchBot|Aqara|Xiaomi.*vacuum|Xiaomi.*robot|Nanoleaf|Philips Hue|Eufy|Shark|iRobot|Roomba|Tineco'
-    home_products = r'扫地机器人|洗地机器人|智能门锁|智能马桶|升降桌|咖啡机|空气净化器|空气炸锅|净水器|智能家居|新风系统|洗碗机|蒸烤箱|集成灶|油烟机|燃气灶|热水器|浴霸|智能窗帘|智能灯|全屋智能|除螨仪|挂烫机|电动牙刷|剃须刀|美容仪|按摩椅|robot vacuum|robot mop|smart lock|smart thermostat|smart home|smart plug|smart light|smart bulb|smart curtain|air purifier|water purifier|dishwasher|range hood|induction|blender|coffee maker|air fryer|smart display|video doorbell|home assistant|matter|thread|homekit|zigbee'
+    home_products = r'扫地机器人|洗地机器人|智能门锁|智能马桶|升降桌|咖啡机|空气净化器|空气炸锅|净水器|智能家居|新风系统|洗碗机|蒸烤箱|集成灶|油烟机|燃气灶|热水器|浴霸|智能窗帘|智能灯|全屋智能|除螨仪|挂烫机|电动牙刷|剃须刀|美容仪|按摩椅|robot vacuum|robot mop|smart lock|smart thermostat|smart home|smart plug|smart light|smart bulb|smart curtain|air purifier|water purifier|dishwasher|range hood|induction|blender|coffee maker|air fryer|smart display|video doorbell|home assistant|\bmatter\b|\bthread\b|homekit|zigbee'
     home_en_context = r'smart home|robot vacuum|robot mop|home kit|home assistant|matter|thread|zigbee|home automation|smart lock|smart thermostat|smart plug|smart light|air purifier|smart display|video doorbell|smart appliance|cleaning robot|vacuum cleaner|floor washer'
     hb = re.search(home_brands, text, re.I)
     hp = re.search(home_products, text, re.I)
     if hb or hp:
         brand = (hb or hp).group()
+        if re.search(r'减持|套现|股东|副总裁|董事|财报|营收|利润', title):
+            return None, [], []
         if brand in HOME_HIGH_FREQ:
             if not re.search(HOME_CONTEXT, text):
                 return None, [], []
@@ -201,7 +205,7 @@ def classify(title, desc, source):
     # 3C（品牌+产品/事件，必须有事件信号）
     tech_brands = r'苹果|iPhone|iPad|MacBook|AirPods|Apple Watch|大疆|DJI|影石|Insta360|OPPO|vivo|三星|索尼|追觅|石头|云鲸|科沃斯|徕芬|戴森|添可|红米|一加|iQOO|realme|真我|荣耀|魅族|锤子|坚果|诺基亚|联想|华硕|ROG|雷蛇|外星人|Bose|JBL|哈曼|Beats|韶音|Switch|PlayStation|Xbox|Steam Deck|Meta Quest|PICO|Nothing|Pixel|Surface|ThinkPad|拯救者|小新|Galaxy|Anker|绿联'
     tech_products = r'折叠屏|降噪耳机|运动相机|无人机|扫地机|洗地机|吸尘器|吹风机|智能手表|手环|充电宝|显卡|折叠手机|翻盖手机|游戏机|VR|AR|头显|投影仪|显示器|键盘|鼠标|路由器|NAS|固态硬盘|SSD|手机|耳机|平板|笔记本|相机|镜头|云台'
-    tech_events = r'发布|降价|开售|首发|预约|现货|断货|涨价|评测|拆解|对比|国补|补贴|618|双11|新品|上市|曝光'
+    tech_events = r'发布|降价|开售|首发|预约|现货|断货|涨价|评测|拆解|对比|国补|补贴|618|双11|新品|上市|曝光|推出|上线|更新|升级|官宣|亮相|发布.*版本|新功能|OTA|固件|召回|诉讼|罚款|收购|合作|研究|工厂|涨价.*20|调价|关税|涨价.*内存|涨价.*芯片|涨价.*AI'
     tb = re.search(tech_brands, text)
     tp = re.search(tech_products, text)
     te = re.search(tech_events, text)
@@ -232,6 +236,64 @@ def parse_rss_time(s):
     except: return None
 
 
+def normalize_time(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def freshness_fields(dt, evidence_type):
+    dt = normalize_time(dt)
+    if dt is None:
+        status = '实时热榜（发布时间未提供）' if evidence_type == 'hot_rank' else '时间未核验'
+        return {
+            'published_at': None,
+            'age_hours': None,
+            'freshness_status': status,
+            'freshness_verified': evidence_type == 'hot_rank',
+            'evidence_type': evidence_type,
+        }
+    age_hours = max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 3600)
+    if age_hours <= 24:
+        status = '0-24小时'
+    elif age_hours <= 48:
+        status = '24-48小时'
+    elif age_hours <= 72:
+        status = '48-72小时待刷新'
+    else:
+        status = '超过72小时'
+    return {
+        'published_at': dt.isoformat(),
+        'age_hours': round(age_hours, 1),
+        'freshness_status': status,
+        'freshness_verified': True,
+        'evidence_type': evidence_type,
+    }
+
+
+def apply_recommendation_gate(item):
+    age_hours = item.get('age_hours')
+    evidence_type = item.get('evidence_type')
+    if age_hours is None:
+        passed = evidence_type == 'hot_rank' and bool(item.get('freshness_verified'))
+        reason = '当前实时热榜' if passed else '发布时间未核验'
+    elif age_hours <= 48:
+        passed = True
+        reason = '48小时内'
+    elif age_hours <= 72:
+        passed = False
+        reason = '48-72小时，仅进入储备；需补充24小时内的新事件证据'
+    else:
+        passed = False
+        reason = '超过72小时'
+    item['freshness_gate_pass'] = passed
+    item['recommendation_status'] = '今日候选' if passed else '储备/淘汰'
+    item['freshness_gate_reason'] = reason
+    return item
+
+
 # ===== 加载数据 =====
 with open(domestic_file) as f:
     dom_raw = json.load(f)
@@ -242,9 +304,9 @@ dom_skipped_old = 0
 dom_skipped_bad_ts = 0
 for p in dom_raw.get('data', []):
     src = p.get('name', '?')
-    for it in p.get('data', []):
+    for rank, it in enumerate(p.get('data', []), 1):
         ts = it.get('timestamp', 0)
-        # 48h时间窗口过滤：热榜数据75%超过48h
+            # 72h时间窗口过滤：热榜数据大量超过48h，已放宽窗口避免误杀仍在热榜的话题
         if ts:
             if ts < 0 or ts > now_ms + 3600000:
                 dom_skipped_bad_ts += 1
@@ -252,11 +314,21 @@ for p in dom_raw.get('data', []):
             if ts < dom_cutoff_ms:
                 dom_skipped_old += 1
                 continue
-        dom.append({'title': it.get('title',''), 'desc': it.get('desc',''), 'source': src})
+        dom.append({
+            'title': it.get('title',''),
+            'desc': it.get('desc',''),
+            'source': src,
+            'url': it.get('url') or it.get('mobileUrl') or '',
+            'rank': rank,
+            **freshness_fields(
+                datetime.fromtimestamp(ts / 1000, tz=timezone.utc) if ts else None,
+                'hot_rank',
+            ),
+        })
 if dom_skipped_old or dom_skipped_bad_ts:
-    print(f"[INFO] 国内数据48h过滤: 保留{len(dom)}条, 跳过老旧{dom_skipped_old}条+异常时间戳{dom_skipped_bad_ts}条", file=sys.stderr)
+    print(f"[INFO] 国内数据72h过滤: 保留{len(dom)}条, 跳过老旧{dom_skipped_old}条+异常时间戳{dom_skipped_bad_ts}条", file=sys.stderr)
 
-# 国际RSS（48h窗口）
+# 国际RSS（72h窗口）
 intl = []
 if intl_file:
     try:
@@ -264,10 +336,10 @@ if intl_file:
             raw = json.load(f)
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(hours=48)
-        for it in raw:
+        for rank, it in enumerate(raw, 1):
             dt = parse_rss_time(it.get('pubDate', ''))
             if dt and dt < cutoff: continue
-            intl.append({'title': it.get('title',''), 'desc': it.get('desc','')[:300], 'source': it.get('source','RSS')})
+            intl.append({'title': it.get('title',''), 'desc': it.get('desc','')[:300], 'source': it.get('source','RSS'), 'url': it.get('link') or it.get('url') or '', 'rank': rank, **freshness_fields(dt, 'rss')})
     except Exception as e:
         print(f"[WARN] 国际RSS: {e}", file=sys.stderr)
 
@@ -279,10 +351,10 @@ if home_file:
             raw = json.load(f)
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(hours=72)
-        for it in raw:
+        for rank, it in enumerate(raw, 1):
             dt = parse_rss_time(it.get('pubDate', ''))
             if dt and dt < cutoff: continue
-            home_rss.append({'title': it.get('title',''), 'desc': it.get('desc','')[:300], 'source': it.get('source','RSS-家居')})
+            home_rss.append({'title': it.get('title',''), 'desc': it.get('desc','')[:300], 'source': it.get('source','RSS-家居'), 'url': it.get('link') or it.get('url') or '', 'rank': rank, **freshness_fields(dt, 'rss')})
     except Exception as e:
         print(f"[WARN] 家居RSS: {e}", file=sys.stderr)
 
@@ -291,6 +363,7 @@ if home_file:
 seen = set()
 cat = {'auto': [], '3c': [], 'ai': [], 'home': []}
 unclassified = []  # 通过噪音过滤但未归入任何品类的条目
+all_sources = dom + intl + home_rss
 
 for src_list in [dom, intl, home_rss]:
     for it in src_list:
@@ -321,6 +394,132 @@ for c in cat:
             unique.append(item)
             seen_words.append(words)
     cat[c] = unique
+
+
+# ===== 全网热点分类 =====
+FULL_WEB_LABELS = {
+    'social_livelihood': '社会/民生',
+    'international_politics': '国际/政治',
+    'finance_policy': '财经/政策',
+    'sports': '体育',
+    'entertainment': '文娱',
+    'health': '健康',
+    'technology_ai': '科技/AI',
+    'other': '其他爆点',
+}
+
+FULL_WEB_PATTERNS = [
+    ('entertainment', r'电影|电视剧|综艺|票房|演员|导演|歌手|演唱会|娱乐|明星|首映|开播|定档|获奖|音乐节'),
+    ('sports', r'世界杯|奥运|欧冠|联赛|决赛|半决赛|进球|球员|足球|女足|篮球|NBA|詹姆斯|马龙|许昕|网球|羽毛球|乒乓球|\bF1\b|冠军|夺冠|赛事'),
+    ('health', r'医院|医生|疾病|癌症|病毒|疫苗|医疗|健康|药品|药物|感染|急救|辟谣|食品安全|流产'),
+    ('finance_policy', r'股市|股票|A股|港股|美股|汇率|人民币|美元|黄金|油价|基金|银行|央行|降息|加息|关税|财报|融资|IPO|上市公司|挂牌|监管|新规|政策|补贴|消费税|房价|楼市|经济|茅台'),
+    ('technology_ai', r'AI|人工智能|大模型|机器人|芯片|半导体|手机|电脑|互联网|软件|硬件|OpenAI|DeepSeek|Claude|Gemini|Kimi|苹果|华为|小米|特斯拉|自动驾驶|新能源车'),
+    ('international_politics', r'总统|首相|总理|习近平|外交|联合国|峰会|战略合作伙伴|制裁|战争|停火|冲突|大选|选举|国会|白宫|欧盟|北约|伊朗|以色列|中东|俄乌|美军|日政府|韩政府'),
+    ('social_livelihood', r'高考|录取|教育|学校|就业|招聘|工资|社保|养老|住房|交通|天气|暴雨|高温|台风|地震|山体|崩塌|防汛|火灾|事故|警方|法院|判刑|消费者|快递|外卖|民生|社会'),
+]
+
+
+def full_web_category(title):
+    for key, pattern in FULL_WEB_PATTERNS:
+        if re.search(pattern, title, re.I):
+            return key
+    return 'other'
+
+
+def normalized_title(title):
+    return re.sub(r'[^0-9a-z\u4e00-\u9fff]+', '', title.lower())
+
+
+def titles_match(left, right):
+    a, b = normalized_title(left), normalized_title(right)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    shorter, longer = sorted((a, b), key=len)
+    if len(shorter) >= 8 and shorter in longer:
+        return True
+    return SequenceMatcher(None, a, b).ratio() >= 0.72
+
+
+GENERIC_ENTITIES = {
+    'ai', 'apple', 'iphone', 'ipad', 'macbook', 'huawei', 'xiaomi', 'robot',
+    'phone', 'pro', 'max', 'ultra', 'suv', 'music',
+}
+
+
+def specific_entities(title):
+    compact = re.sub(r'(?i)(iphone|mate|pura|model|galaxy|redmi)\s+', r'\1', title)
+    tokens = set(re.findall(r'(?i)(?:[a-z]+[0-9][a-z0-9+-]*|[0-9]+[a-z][a-z0-9+-]*)', compact))
+    tokens.update(re.findall(r'(?i)\b(?:openpods|apple\s*music|robot\s*phone|deebot\s*x?\d+)\b', title))
+    return {re.sub(r'\s+', '', token.lower()) for token in tokens if token.lower() not in GENERIC_ENTITIES}
+
+
+def same_topic_event(left, right):
+    if titles_match(left, right):
+        return True
+    entities_left = specific_entities(left)
+    entities_right = specific_entities(right)
+    return bool(entities_left & entities_right)
+
+
+def build_full_web_topics(items):
+    buckets = {key: [] for key in FULL_WEB_LABELS}
+    ignored_sources = NOISE_PLATFORMS
+    for item in items:
+        title = item.get('title', '').strip()
+        if not title or item.get('source') in ignored_sources:
+            continue
+        key = full_web_category(title)
+        match = next((topic for topic in buckets[key] if same_topic_event(topic['title'], title)), None)
+        if match:
+            match['platforms'].add(item.get('source', 'unknown'))
+            match['source_count'] += 1
+            rank = int(item.get('rank') or 100)
+            match['best_rank'] = min(match['best_rank'], rank)
+            if not match.get('url') and item.get('url'):
+                match['url'] = item['url']
+            item_age = item.get('age_hours')
+            match_age = match.get('age_hours')
+            if item_age is not None and (match_age is None or item_age < match_age):
+                for field in ('published_at', 'age_hours', 'freshness_status', 'freshness_verified', 'evidence_type'):
+                    match[field] = item.get(field)
+            continue
+        buckets[key].append({
+            'title': title,
+            'category': key,
+            'platforms': {item.get('source', 'unknown')},
+            'source_count': 1,
+            'best_rank': int(item.get('rank') or 100),
+            'url': item.get('url') or '',
+            'published_at': item.get('published_at'),
+            'age_hours': item.get('age_hours'),
+            'freshness_status': item.get('freshness_status', '时间未核验'),
+            'freshness_verified': bool(item.get('freshness_verified')),
+            'evidence_type': item.get('evidence_type', 'unknown'),
+        })
+
+    result = {}
+    for key, topics in buckets.items():
+        for topic in topics:
+            topic['platform_count'] = len(topic.pop('platforms'))
+            topic['heat_score'] = topic['platform_count'] * 20 + max(0, 20 - min(topic['best_rank'], 20))
+            apply_recommendation_gate(topic)
+        topics.sort(
+            key=lambda topic: (
+                topic['heat_score'],
+                topic['platform_count'],
+                topic.get('freshness_verified', False),
+                -(topic.get('age_hours') if topic.get('age_hours') is not None else 9999),
+                -topic['best_rank'],
+            ),
+            reverse=True,
+        )
+        result[key] = topics[:8]
+    return result
+
+
+full_web = build_full_web_topics(all_sources)
 
 # ===== 溢出热点检测（跨3+平台的未归类超级热点）=====
 def extract_keywords(s, min_len=2, max_len=4):
@@ -374,21 +573,70 @@ total = sum(len(v) for v in cat.values())
 print(f"## 筛选结果（国内{'+' + str(len(intl)) + '国际' if intl else ''}{'+' + str(len(home_rss)) + '家居RSS' if home_rss else ''}）")
 print(f"  汽车:{len(cat['auto'])} | 3C:{len(cat['3c'])} | AI:{len(cat['ai'])} | 家居:{len(cat['home'])} | 总计:{total}")
 
-print(f"\n--- 我关注的热点 ---")
-for c, label in [('auto','🚗 汽车'), ('3c','📱 3C数码'), ('ai','🤖 AI'), ('home','🏠 家居')]:
+print("\n# 第一部分：全网热点")
+for key, label in FULL_WEB_LABELS.items():
+    topics = full_web[key]
+    if not topics:
+        continue
+    print(f"\n## {label}")
+    for item in topics:
+        link = f" {item['url']}" if item.get('url') else ''
+        print(f"- {item['title']}（{item['platform_count']}个平台，热度 {item['heat_score']}）{link}")
+
+print(f"\n# 第二部分：我关注的方向")
+for c, label in [('auto','汽车媒体'), ('3c','3C 数码'), ('home','智能家居')]:
     print(f"\n### {label} ({len(cat[c])}条)")
     for i, r in enumerate(cat[c][:15], 1):
-        print(f"  {i}. [{r['source']}] {r['title'][:80]}")
-        print(f"     → {'+'.join(r['brands'])} {'+'.join(r['signals'])}")
-
-# 全网热点输出
-if overflow_topics:
-    print(f"\n### 🔥 全网热点（不在我的关注范围内，但热度很高）({len(overflow_topics)}条)")
-    for i, t in enumerate(overflow_topics[:10], 1):
-        print(f"  {i}. [{t['platform_count']}个平台] {t['title'][:80]}")
-        print(f"     → 平台: {', '.join(t['platforms'][:5])}")
+        link = f" {r.get('url', '')}" if r.get('url') else ''
+        print(f"- [{r['source']}] {r['title'][:100]}{link}")
 
 # 保存JSON
+# 给每个品类条目计算同事件 platform_count。品牌相同不等于同一事件。
+for c_name in cat:
+    for item in cat[c_name]:
+        platforms = set()
+        for src_item in all_sources:
+            if same_topic_event(item['title'], src_item['title']):
+                platforms.add(src_item['source'])
+        item['platform_count'] = max(len(platforms), 1)
+        apply_recommendation_gate(item)
+
+focus = {'auto': cat['auto'], '3c': cat['3c'], 'smart_home': cat['home']}
+presentation = {
+    'schema_version': 1,
+    'generated_at': datetime.now(timezone.utc).isoformat(),
+    'display_order': ['full_web', 'focus'],
+    'full_web': full_web,
+    'focus': focus,
+    'validation': {
+        'full_web_nonempty_categories': sum(bool(items) for items in full_web.values()),
+        'focus_keys': list(focus),
+        'valid': sum(bool(items) for items in full_web.values()) >= 2 and list(focus) == ['auto', '3c', 'smart_home'],
+    },
+}
+
+output_dir.mkdir(parents=True, exist_ok=True)
+legacy_payload = {**cat, 'overflow': overflow_topics, 'full_web': full_web, 'focus': focus}
 with open('/tmp/filtered_daily.json', 'w') as f:
-    json.dump({**cat, 'overflow': overflow_topics}, f, ensure_ascii=False, indent=2)
-print(f"\n✅ 已保存到 /tmp/filtered_daily.json")
+    json.dump(legacy_payload, f, ensure_ascii=False, indent=2)
+(output_dir / '01-hotspots-presentation.json').write_text(json.dumps(presentation, ensure_ascii=False, indent=2), encoding='utf-8')
+
+markdown_lines = ['# 第一部分：全网热点']
+for key, label in FULL_WEB_LABELS.items():
+    topics = full_web[key]
+    if not topics:
+        continue
+    markdown_lines.extend(['', f'## {label}'])
+    for item in topics:
+        source = f"{item['platform_count']}个平台，热度 {item['heat_score']}"
+        source += f"，时效 {item.get('freshness_status', '时间未核验')}，{item.get('recommendation_status', '待判断')}"
+        title = f"[{item['title']}]({item['url']})" if item.get('url') else item['title']
+        markdown_lines.append(f'- {title}（{source}）')
+markdown_lines.extend(['', '# 第二部分：我关注的方向'])
+for key, label in [('auto', '汽车媒体'), ('3c', '3C 数码'), ('smart_home', '智能家居')]:
+    markdown_lines.extend(['', f'## {label}'])
+    for item in focus[key][:15]:
+        title = f"[{item['title']}]({item['url']})" if item.get('url') else item['title']
+        markdown_lines.append(f"- {title}（来源：{item['source']}，跨 {item.get('platform_count', 1)} 个平台，时效：{item.get('freshness_status', '时间未核验')}，状态：{item.get('recommendation_status', '待判断')}）")
+(output_dir / '01-hotspots-presentation.md').write_text('\n'.join(markdown_lines) + '\n', encoding='utf-8')
+print(f"\n已保存到 /tmp/filtered_daily.json 和 {output_dir}/01-hotspots-presentation.*")

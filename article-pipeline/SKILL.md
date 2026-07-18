@@ -3,13 +3,22 @@ name: article-pipeline
 description: >
   文章生产流水线总入口。统一编排：热点抓取→选题筛选→角度选择→定调→写正文→质检→发布。
   同时承载路由规则、硬约束、风格路径选择。
-  Triggers — "跑流程", "一条龙", "写文章", "从热点开始写", "pipeline", "全流程",
-  "抓热点", "筛选题", "选角度", "定调", "写正文", "质检", "发布"
+  所有“有什么值得写”“今天写什么”“跑一次内容创作流”等模糊创作请求都必须从本入口启动。
+  Triggers — "有什么值得写", "现在有什么值得写", "今天写什么", "跑流程", "一条龙", "写文章",
+  "从热点开始写", "内容创作流", "pipeline", "全流程", "抓热点", "筛选题", "选角度", "定调",
+  "写正文", "质检", "发布"
 ---
 
 # article-pipeline — 内容创作流总入口
 
 > 所有内容创作请求都从这里进。plan-first 原则贯穿始终。
+
+## 入口路由铁律
+
+- “有什么值得写”“今天写什么”“跑一次”等没有指定阶段的请求，必须由本 Skill 统一编排，禁止直接跳到 `sourcing-hotspots` 或 `screening-topics`。
+- 只有用户明确说“只抓原始热点”“只重新评分”“只改正文”时，才允许单独调用阶段 Skill。
+- 热点阶段统一遵守 `references/hotspot-output-contract.md`。先向用户展示“全网热点 → 我关注的方向”，再进入选题评分。
+- 普通交互模式在热点与选题、角度、定调三个确认点停下；只有用户明确说“直接跑完/全自动/不用确认”才继续。
 
 ---
 
@@ -89,13 +98,15 @@ Step 1: 抓素材          sourcing-hotspots（Skill）
          ▼
 Step 1.2: 数据质量整理   主 Agent 调用数据质量规则/工具
          │ 自动去重、纠正分类、标注情绪强度
-         │ ⚠️ 两层输出：第一层"全网热点"（社会/国际/财经/文娱/体育）+ 第二层"关注领域热点"（汽车/3C/AI/家居）
-         │ 输出：结构化热点数据（按两层组织）
+         │ 两层输出：第一层"全网热点"（分类）+ 第二层"关注领域热点"（汽车/3C/智能家居）
+         │ 输出：01-hotspots-presentation.json + 01-hotspots-presentation.md
+         │ 门槛：python3 scripts/validate_stage.py hotspots；失败不得进入筛选
          ▼
-Step 1.5: 筛选选题      screening-topics（Skill，可启用子 Agent 独立评分）
+Step 1.5: 筛选选题      screening-topics（代码预筛 + 模型语义判断 + 代码复算）
          │ ⚠️ 两层筛选：先筛全网热点（按全网热度）→ 再筛关注领域热点
-         │ 评分50分制：全网热度×2 + 时效性×2 + 讨论热度×2 + 情绪强度×2 + 内容关联度×2
-         │ 输出：3-5个选题推荐（热度评分+切入方向+反面理由）
+         │ 前三项由代码锁定，模型只评情绪强度和内容关联度，总分由代码复算
+         │ 输出：至少5个、最多10个选题推荐（热度评分+切入方向+反面理由）；合格候选不足5个时说明缺口与时效淘汰原因
+         │ 门槛：python3 scripts/validate_stage.py screening；失败不得声称完成
          │ ⏸ 用户确认选题
          ▼
 Step 2: 选角度          angle-selection（Skill，含KOL微博48-72h观点采集）
@@ -177,7 +188,7 @@ Step 8: 知识回写        存入 zvec 知识库（自动）
 
 **CLI 命令速查：**
 ```bash
-ZVEC="/tmp/zvec-poc/bin/python /Users/xxqq/.hermes/zvec-content-poc.py"
+ZVEC="/tmp/zvec-poc/bin/python $HOME/.hermes/zvec-content-poc.py"
 $ZVEC add_topic "<id>" "<text>" "[source]"
 $ZVEC add_angle "<id>" "<text>" "<topic>" "[score]"
 $ZVEC add_competitor "<id>" "<text>" "<author>" "[platform]"
@@ -361,7 +372,7 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 **⚠️ 热点必须分两层输出（2026-06-17 修正）：**
 - **第一层：全网热点**（不限方向）— 社会/民生、国际、财经/政策、文娱/体育、其他爆点
-- **第二层：关注领域热点** — 汽车、3C、AI、家居
+- **第二层：关注领域热点** — 汽车媒体、3C 数码、智能家居
 
 不能只输出关注领域热点。全网热点先按热度排序，再看关注领域。这样既能捕捉"大话题"（如高考、中东局势），也能保留"精准话题"（如华为智驾）。
 
@@ -420,7 +431,7 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 用户说「跑流程」「一条龙」「跑一次流程」时：
 1. 调用 `~/.hermes/skills/sourcing-hotspots/scripts/full_hotspot_run.py`，在 120 秒内完成全来源实时抓取或缓存降级。
-2. 完成数据质量整理和 screening-topics，输出 5-8 个候选、原文链接、评分依据、反面理由和来源状态。
+2. 完成数据质量整理和 screening-topics，输出至少 5 个、最多 10 个候选，以及原文链接、评分依据、反面理由和来源状态。
 3. **停在热点与选题确认，不得自动选择。**
 4. 用户确认选题后再研究并生成角度，随后停在角度确认。
 5. 用户确认角度后生成定调与文章计划，随后再次停止确认。
@@ -552,7 +563,8 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 - `references/product-article-angles.md` — 产品文章角度库（原content-engine）
 - `references/ifanr-content-analysis.md` — 爱范儿内容模式分析（原content-engine）
 - `references/structure-agent-prompt.md` — 结构Agent prompt v4（决策树选框架+配套钩子+自检清单）
-- `references/screening-agent-prompt.md` — 筛选Agent prompt v5（50分制评分含全网热度维度+两层筛选+动态切入方向+单维度爆点规则）
+- `../screening-topics/references/screening-agent-prompt.md` — 筛选 Agent prompt v5（50分制评分含全网热度维度+两层筛选）
+- `references/hotspot-output-contract.md` — 热点阶段唯一输出契约（全网分类在前、关注方向在后、完成展示后再评分）
 - `references/message-format.md` — 结构化信息传递格式规范（主 Agent 调用 Skill/子 Agent 时的标准化输入输出格式）
 - `references/quality-agent-prompt.md` — 质检Agent prompt v3（L0-L5六层检查+严重程度量化+平台适配+读者体验模拟+删减建议+迭代管理）
 - `references/structure-agent-case-study.md` — 结构Agent完整案例（沃齐尼亚vs阿尔奥维斯，含输入/输出/教训）

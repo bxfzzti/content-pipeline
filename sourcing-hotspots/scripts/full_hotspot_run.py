@@ -316,7 +316,7 @@ def write_outputs(output_dir: Path, results: list[SourceResult], script_dir: Pat
     home_path.write_text(json.dumps(home, ensure_ascii=False, indent=2), encoding="utf-8")
 
     filter_proc = subprocess.run(
-        [sys.executable, str(script_dir / "filter_all_categories.py"), str(output_dir / "01-hotspots-raw.json"), str(intl_path), str(home_path)],
+        [sys.executable, str(script_dir / "filter_all_categories.py"), str(output_dir / "01-hotspots-raw.json"), str(intl_path), str(home_path), str(output_dir)],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -344,6 +344,48 @@ def write_outputs(output_dir: Path, results: list[SourceResult], script_dir: Pat
     filtered_path = Path("/tmp/filtered_daily.json")
     if filtered_path.exists():
         shutil.copy2(filtered_path, output_dir / "01-hotspots-filtered.json")
+
+    presentation_path = output_dir / "01-hotspots-presentation.json"
+    presentation_valid = False
+    if presentation_path.exists():
+        try:
+            presentation = json.loads(presentation_path.read_text(encoding="utf-8"))
+            presentation_valid = bool((presentation.get("validation") or {}).get("valid"))
+        except (OSError, ValueError, TypeError):
+            presentation_valid = False
+    manifest["presentation_valid"] = presentation_valid
+
+    shortlist_path = output_dir / "01c-screening-candidates.json"
+    shortlist_valid = False
+    shortlist_count = 0
+    screening_script = script_dir.parent.parent / "screening-topics" / "scripts" / "prepare_screening_candidates.py"
+    if presentation_valid and screening_script.exists():
+        shortlist_proc = subprocess.run(
+            [
+                sys.executable,
+                str(screening_script),
+                "--input",
+                str(presentation_path),
+                "--output",
+                str(shortlist_path),
+                "--limit",
+                "12",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=8,
+        )
+        if shortlist_proc.returncode == 0 and shortlist_path.exists():
+            try:
+                shortlist_payload = json.loads(shortlist_path.read_text(encoding="utf-8"))
+                shortlist_count = len(shortlist_payload.get("candidates") or [])
+                shortlist_valid = shortlist_count >= 5
+            except (OSError, ValueError, TypeError):
+                shortlist_valid = False
+    manifest["screening_shortlist_valid"] = shortlist_valid
+    manifest["screening_shortlist_count"] = shortlist_count
 
     product_result = by_name.get("product-experience")
     product_dir = output_dir / "product-run"
@@ -384,8 +426,13 @@ def main() -> int:
     manifest = write_outputs(output_dir, results, script_dir, elapsed)
     manifest["deadline_seconds"] = args.deadline_seconds
     (output_dir / "00-source-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"ok": elapsed <= args.deadline_seconds, **manifest}, ensure_ascii=False))
-    return 0 if elapsed <= args.deadline_seconds else 2
+    ok = (
+        elapsed <= args.deadline_seconds
+        and bool(manifest.get("presentation_valid"))
+        and bool(manifest.get("screening_shortlist_valid"))
+    )
+    print(json.dumps({"ok": ok, **manifest}, ensure_ascii=False))
+    return 0 if ok else 2
 
 
 if __name__ == "__main__":

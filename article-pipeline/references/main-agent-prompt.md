@@ -19,6 +19,8 @@
 5. **必须处理失败回退**：工具失败时换关键词、换源、降级到主 Agent 直搜；质检不过时回到上一阶段修复。
 6. **子 Agent 只做独立视角**：子 Agent 输出建议或报告后必须交回主 Agent，由主 Agent 决定采用、融合或舍弃。
 7. **迭代轮次管理**：质检→修复→重质检最多 3 轮，连续 2 轮无新增问题即可停止。
+8. **统一入口**：“有什么值得写”“今天写什么”等模糊创作请求必须走完整主编排，不能只调用热点或筛选 Skill。
+9. **热点先展示再评分**：严格读取 `hotspot-output-contract.md`，先输出分类后的全网热点，再输出汽车媒体、3C 数码、智能家居，用户看到这两层后才进入筛选。
 
 ## 核心职责
 
@@ -68,7 +70,13 @@
 
 ### Step 1.2: 数据质量整理
 
-主 Agent 根据 sourcing-hotspots 的规则完成去重、分类纠错、情绪强度标注和两层输出。
+主 Agent 读取 `/tmp/article-pipeline/01-hotspots-presentation.json` 和 `.md`，按 `hotspot-output-contract.md` 校验顺序、分类和关注领域。校验失败时停在本阶段修复，不得进入筛选。
+
+必须执行：
+
+```bash
+python3 ~/.hermes/skills/article-pipeline/scripts/validate_stage.py hotspots
+```
 
 必要时可启用子 Agent 做独立质量审查，但子 Agent 只输出报告，不接管流程。
 
@@ -76,7 +84,15 @@
 
 调用 `screening-topics`。
 
-如果候选很多，允许启用子 Agent 做独立评分和反面论证。输出 5-8 个推荐选题，并进入**热点与选题确认**。普通“跑流程”必须停止等待；只有用户明确选择全自动模式时才自动选最佳项。
+选题刷新默认只执行一次 `python3 ~/.hermes/skills/article-pipeline/scripts/run_topic_scout.py`。脚本会抓取热点，并由专用 Flash 模型一次读取短名单、写入语义判断，再由代码终审。主 Agent 不得重复读取候选、重新搜索、调用 zvec、启用子 Agent 或自行计算总分。
+
+随后必须执行 `python3 ~/.hermes/skills/screening-topics/scripts/finalize_screening.py`。最终只读取代码生成的 `/tmp/article-pipeline/02-topic-suggestion.md`。确认点固定合并为“全网热点 → 我关注的方向 → 选题建议”；普通“跑流程”必须停止等待。
+
+必须执行：
+
+```bash
+python3 ~/.hermes/skills/article-pipeline/scripts/validate_stage.py screening
+```
 
 ### Step 2: 选角度
 
@@ -85,8 +101,8 @@
 确认后写入 zvec：
 
 ```bash
-/tmp/zvec-poc/bin/python /Users/xxqq/.hermes/zvec-content-poc.py add_topic "<选题ID>" "<选题标题>" "<来源>"
-/tmp/zvec-poc/bin/python /Users/xxqq/.hermes/zvec-content-poc.py add_angle "<角度ID>" "<角度描述>" "<选题标题>" <SPOV分数>
+/tmp/zvec-poc/bin/python ~/.hermes/zvec-content-poc.py add_topic "<选题ID>" "<选题标题>" "<来源>"
+/tmp/zvec-poc/bin/python ~/.hermes/zvec-content-poc.py add_angle "<角度ID>" "<角度描述>" "<选题标题>" <SPOV分数>
 ```
 
 ### Step 3: 定结构和 plan
@@ -128,8 +144,8 @@
 发布成功后写入 zvec：
 
 ```bash
-/tmp/zvec-poc/bin/python /Users/xxqq/.hermes/zvec-content-poc.py add_style "<文章ID>" "<文章前500字>" good
-/tmp/zvec-poc/bin/python /Users/xxqq/.hermes/zvec-content-poc.py add_topic "<选题ID>" "<选题标题>" "self"
+/tmp/zvec-poc/bin/python ~/.hermes/zvec-content-poc.py add_style "<文章ID>" "<文章前500字>" good
+/tmp/zvec-poc/bin/python ~/.hermes/zvec-content-poc.py add_topic "<选题ID>" "<选题标题>" "self"
 ```
 
 ## 汇报格式

@@ -29,7 +29,7 @@ CATEGORY_LABELS = {
 CONTENT_LINES = {
     'hot_take': '热点观点线',
     'decision': '消费决策线',
-    'framework': '长期框架线',
+    'experience': '经验沉淀线',
 }
 
 BRANDS = (
@@ -47,6 +47,7 @@ DECISION_TERMS = (
 FRAMEWORK_TERMS = (
     '框架', '方法', '清单', '五问', '四象限', '怎么判断', '判断标准', '话术翻译',
     '决策模型', '选择逻辑', '选车逻辑', '买车逻辑', '家庭用户', '预算分层',
+    '最划算', '省钱', '步骤', '教程', '经验', '攻略', '怎么买',
 )
 
 AUTO_PRODUCT_TERMS = (
@@ -141,7 +142,7 @@ def detect_brand(item: dict[str, Any]) -> str:
 def default_content_line(item: dict[str, Any]) -> str:
     text = ' '.join(str(item.get(key) or '') for key in ('title', 'desc', 'summary', 'category_label'))
     if any(term in text for term in FRAMEWORK_TERMS):
-        return 'framework'
+        return 'experience'
     if item.get('candidate_type') == 'product_experience':
         return 'decision'
     if item.get('category') == 'auto':
@@ -346,8 +347,11 @@ def prepare(payload: dict[str, Any], limit: int = 20, product_items: list[dict[s
         'source_generated_at': payload.get('generated_at'),
         'scoring_boundary': {
             'code_scores': ['heat_score', 'freshness_score', 'discussion_score'],
-            'model_scores': ['emotion_score', 'relevance_score', 'content_line', 'asset_value'],
-            'total_formula': '(heat + freshness + discussion + emotion + relevance) * 2',
+            'model_scores': [
+                'emotion_score', 'relevance_score', 'hot_take_factors',
+                'decision_factors', 'experience_factors', 'asset_value',
+            ],
+            'total_formula': 'line-specific weighted scores, 0-100; final line is the highest-scoring content line',
         },
         'stats': {
             'input_count': len(flatten(payload)),

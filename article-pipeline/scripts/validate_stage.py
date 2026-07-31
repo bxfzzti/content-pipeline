@@ -65,12 +65,12 @@ def validate_screening(root: Path) -> list[str]:
             if not (payload.get('stats') or {}).get('minimum_met'):
                 errors.append('screening must contain at least five complete recommendations')
             for item in payload.get('recommendations') or []:
-                dimensions = item.get('dimensions') or {}
-                expected = sum(int(value) for value in dimensions.values()) * 2
-                if expected != item.get('writing_value_score'):
-                    errors.append(f"score mismatch: {item.get('candidate_id')}")
-                if item.get('content_line') not in {'hot_take', 'decision', 'framework'}:
+                line_scores = item.get('line_scores') or {}
+                content_line = 'experience' if item.get('content_line') == 'framework' else item.get('content_line')
+                if content_line not in {'hot_take', 'decision', 'experience'}:
                     errors.append(f"missing content_line: {item.get('candidate_id')}")
+                elif int((line_scores.get(content_line) or {}).get('score') or -1) != item.get('writing_value_score'):
+                    errors.append(f"score mismatch: {item.get('candidate_id')}")
                 if not item.get('line_reason'):
                     errors.append(f"missing line_reason: {item.get('candidate_id')}")
         except (OSError, ValueError, TypeError) as exc:

@@ -160,7 +160,7 @@ Step 8: 知识回写        存入 zvec 知识库（自动）
 
 产品体验线用于发现科技类和生活类产品的体验、开箱、横评、吐槽、新品和避坑内容。筛选阶段不要把它伪装成全网热点；应以 `candidate_type=product_experience` 进入统一候选池，默认优先评估为消费决策线，再由模型根据 `references/content-line-contract.md` 判断是否值得写。
 
-内容线按“读者承诺”判断，不按品类硬分。汽车、3C、智能家居都可以写成热点观点、消费决策或长期框架：写“我怎么看”是热点观点，写“该不该买/怎么选/该等还是该避”是消费决策，写“以后遇到这类产品、品牌叙事或技术路线怎么判断”是长期框架。汽车是高客单价产品，不能因为来源是汽车媒体就默认归为热点观点线。
+内容线按“读者承诺”判断，不按品类硬分。汽车、3C、智能家居都可以写成热点观点、消费决策或经验沉淀：写“我怎么看”是热点观点，写“该不该买/怎么选/该等还是该避”是消费决策，写“这类事情怎么做更划算、更少踩坑、更可复用”是经验沉淀。汽车是高客单价产品，不能因为来源是汽车媒体就默认归为热点观点线。
 
 默认输出必须保留原文链接、短摘录、`creative_score`、分数明细和二创切入。若写入飞书多维表格，使用 `sourcing-hotspots/scripts/smzdm_product_topics.py` 按原文链接去重增补。
 
@@ -568,7 +568,7 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 - `references/product-article-angles.md` — 产品文章角度库（原content-engine）
 - `references/ifanr-content-analysis.md` — 爱范儿内容模式分析（原content-engine）
 - `references/structure-agent-prompt.md` — 结构Agent prompt v4（决策树选框架+配套钩子+自检清单）
-- `../screening-topics/references/screening-agent-prompt.md` — 筛选 Agent prompt v5（50分制评分含全网热度维度+两层筛选）
+- `../screening-topics/references/screening-agent-prompt.md` — 筛选 Agent prompt（三线并行评分+内容线主线选择）
 - `references/hotspot-output-contract.md` — 热点阶段唯一输出契约（全网分类在前、关注方向在后、完成展示后再评分）
 - `references/message-format.md` — 结构化信息传递格式规范（主 Agent 调用 Skill/子 Agent 时的标准化输入输出格式）
 - `references/quality-agent-prompt.md` — 质检Agent prompt v3（L0-L5六层检查+严重程度量化+平台适配+读者体验模拟+删减建议+迭代管理）

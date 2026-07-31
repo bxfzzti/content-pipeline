@@ -32,7 +32,7 @@ def test_prepare_rejects_stale_items_and_calculates_fixed_scores():
     assert candidate['discussion_score'] == 5
     assert candidate['fixed_subtotal'] == 30
     assert candidate['candidate_type'] == 'hotspot'
-    assert candidate['default_content_line'] in {'hot_take', 'decision', 'framework'}
+    assert candidate['default_content_line'] in {'hot_take', 'decision', 'experience'}
 
 
 def test_prepare_deduplicates_same_url():
@@ -161,17 +161,17 @@ def test_prepare_keeps_auto_company_finance_as_hot_take():
     assert result['candidates'][0]['default_content_line'] == 'hot_take'
 
 
-def test_prepare_routes_auto_decision_model_to_framework_line():
+def test_prepare_routes_auto_decision_model_to_experience_line():
     payload = {
         'full_web': {},
         'focus': {
-            'auto': [item('家庭用户买车逻辑：增程和纯电到底怎么判断', age=2, platforms=4, url='https://car/framework')],
+            'auto': [item('家庭用户买车攻略：增程和纯电到底怎么判断', age=2, platforms=4, url='https://car/experience')],
             '3c': [],
             'smart_home': [],
         },
     }
     result = prepare(payload)
-    assert result['candidates'][0]['default_content_line'] == 'framework'
+    assert result['candidates'][0]['default_content_line'] == 'experience'
 
 
 def test_prepare_reserves_slots_for_product_experience_when_hotspots_are_full():

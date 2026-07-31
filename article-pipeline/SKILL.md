@@ -13,6 +13,8 @@ description: >
 
 > 所有内容创作请求都从这里进。plan-first 原则贯穿始终。
 
+顶层内容线契约见 `references/content-line-contract.md`。账号定位、三条内容线、分流标准、评分边界和后续生产协同都以该文件为准；其他 prompt 或脚本不得另起一套内容线定义。
+
 ## 入口路由铁律
 
 - “有什么值得写”“今天写什么”“跑一次”等没有指定阶段的请求，必须由本 Skill 统一编排，禁止直接跳到 `sourcing-hotspots` 或 `screening-topics`。
@@ -156,7 +158,7 @@ Step 8: 知识回写        存入 zvec 知识库（自动）
 1. **热点线**：平台热榜/RSS/hot-aggregator，输出 `/tmp/article-pipeline/01-hotspots-raw.md`。
 2. **产品体验线**：`search-product-experience-posts`，按什么值得买为主、少数派/Chiphell 为补充，输出 `/tmp/article-pipeline/01b-product-experience.md`。
 
-产品体验线用于发现科技类和生活类产品的体验、开箱、横评、吐槽、新品和避坑内容。筛选阶段不要把它伪装成全网热点；应以 `candidate_type=product_experience` 进入统一候选池，默认优先评估为消费决策线，再由模型判断是否值得写。
+产品体验线用于发现科技类和生活类产品的体验、开箱、横评、吐槽、新品和避坑内容。筛选阶段不要把它伪装成全网热点；应以 `candidate_type=product_experience` 进入统一候选池，默认优先评估为消费决策线，再由模型根据 `references/content-line-contract.md` 判断是否值得写。
 
 内容线按“读者承诺”判断，不按品类硬分。汽车、3C、智能家居都可以写成热点观点、消费决策或长期框架：写“我怎么看”是热点观点，写“该不该买/怎么选/该等还是该避”是消费决策，写“以后遇到这类产品、品牌叙事或技术路线怎么判断”是长期框架。汽车是高客单价产品，不能因为来源是汽车媒体就默认归为热点观点线。
 
@@ -559,6 +561,7 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 ## 参考文件
 
+- `references/content-line-contract.md` — 内容线总契约（账号定位、三条内容线、分流标准、评分边界、生产协同）
 - `references/dedao-content-methodology.md` — 得到品控方法论
 - `references/xhs-commercial-content-style.md` — 商单内容体验化写法
 - `references/boss-content-strategy.md` — 品牌知识图谱+选题策略（原content-engine）

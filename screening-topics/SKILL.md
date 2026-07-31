@@ -7,6 +7,8 @@ description: 筛选题时使用。接收热点列表，跑六问审查 + 内容�
 
 接收代码预筛短名单 → 模型补充语义判断 → 代码复算并输出 S/A/B 级选题建议。**只出建议，不写正文。**
 
+内容线、账号定位、分流问题、打分边界和生产协同以 `../article-pipeline/references/content-line-contract.md` 为顶层契约。本 skill 只执行筛选，不重新定义账号定位。
+
 ## 产物与进度（强制）
 
 开始时先发进度：「正在跑 2/7 选题筛选，会做六问审查、内容策略三问和 zvec 去重。」
@@ -68,6 +70,10 @@ description: 筛选题时使用。接收热点列表，跑六问审查 + 内容�
 - `framework`：长期框架线，把热点沉淀成判断方法、选购框架或行业/消费决策模型。
 
 内容线按“读者承诺”判断，不按品类硬分。汽车、3C、智能家居都可以进入三条线：写“我怎么看”是 `hot_take`，写“该不该买/怎么选/该等还是该避”是 `decision`，写“以后遇到这类产品、品牌叙事或技术路线怎么判断”是 `framework`。汽车是高客单价产品，不能因为来源是汽车媒体就默认归为热点观点线。
+
+优先按三问分流：读者要我怎么看 → `hot_take`；读者要怎么选 → `decision`；读者要以后怎么判断 → `framework`。如果三条线都能写，按当天目标选择：抢时效和评论选观点，建立信任和收藏选决策，沉淀账号资产选框架。
+
+`framework` 有硬门槛：必须能命名一个方法、写出至少 3 个判断步骤，并能用案例演示。不要因为“这件事能引出长期趋势”就归框架；新事实、公司经营反差和公共争议默认仍优先保留为 `hot_take`。
 
 `candidate_type=product_experience` 的候选来自什么值得买等产品体验池，默认优先考虑 `decision`，但模型仍可因单篇体验弱、证据不足或不适合二创而降低关联度或写“不适用”。
 
@@ -143,10 +149,12 @@ python3 ~/.hermes/skills/screening-topics/scripts/finalize_screening.py
 - **禁止猜时效**：不得凭模型记忆、品牌知名度或标题措辞判断“刚发布”。单维度 5 分规则不得绕过时效硬门槛。
 - **推荐数量与多样性**：正常至少输出 5 个，最多 10 个；同一事件只保留 1 条，同一品牌最多 2 条，同一车型/产品最多 1 条，汽车默认不超过最终列表一半。若合格候选不足 5 个，必须说明缺口、时效淘汰数量与原因，禁止用旧题或低质量题凑数。
 - **评分口径**：前三项来自代码，后两项来自模型，`writing_value_score` 必须由 `finalize_screening.py` 复算；严禁模型自报总分。
+- **内容线不是分数**：内容线决定后续生产模板，不直接加分或扣分；正式总分仍是统一五维 50 分。
 - **内容线继承**：后续 angle-selection、framing、writing 必须读取 `content_line`。热点观点线优先定立场，消费决策线优先给行动建议，长期框架线优先沉淀方法。
 
 ## 参考
 
 - 关键词体系、KOL 账号、五问详情、传播势能标准、多方向模式：`references/screening-reference.md`
+- 内容线总契约：`../article-pipeline/references/content-line-contract.md`
 - 坑位记录：`references/pitfalls.md`
 - 筛选 Agent prompt：`references/screening-agent-prompt.md`

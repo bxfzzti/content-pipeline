@@ -34,7 +34,13 @@ def test_screening_gate_requires_suggestion(tmp_path):
     (tmp_path / '02-topic-suggestion.md').write_text('选题建议', encoding='utf-8')
     dimensions = {'heat': 4, 'freshness': 5, 'discussion': 4, 'emotion': 4, 'relevance': 5}
     recommendations = [
-        {'candidate_id': f'C{i:02d}', 'dimensions': dimensions, 'writing_value_score': 44}
+        {
+            'candidate_id': f'C{i:02d}',
+            'dimensions': dimensions,
+            'writing_value_score': 44,
+            'content_line': 'hot_take',
+            'line_reason': '测试内容线',
+        }
         for i in range(1, 6)
     ]
     (tmp_path / '02-topic-suggestion.json').write_text(

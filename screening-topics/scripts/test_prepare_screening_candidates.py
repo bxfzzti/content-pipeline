@@ -31,6 +31,8 @@ def test_prepare_rejects_stale_items_and_calculates_fixed_scores():
     assert candidate['freshness_score'] == 5
     assert candidate['discussion_score'] == 5
     assert candidate['fixed_subtotal'] == 30
+    assert candidate['candidate_type'] == 'hotspot'
+    assert candidate['default_content_line'] in {'hot_take', 'decision', 'framework'}
 
 
 def test_prepare_deduplicates_same_url():
@@ -87,3 +89,72 @@ def test_prepare_merges_same_model_even_when_other_numbers_differ():
     }
     result = prepare(payload)
     assert result['stats']['eligible_after_dedup'] == 1
+
+
+def test_prepare_allows_search_index_with_lower_freshness_score():
+    search_item = {
+        **item('理想 L6 车主口碑集中出现', age=None, platforms=1, url='https://www.autohome.com.cn/a'),
+        'freshness_status': '搜索索引补链（需点开核验）',
+        'evidence_type': 'search_index',
+    }
+    payload = {
+        'full_web': {},
+        'focus': {
+            'auto': [search_item],
+            '3c': [],
+            'smart_home': [],
+        },
+    }
+
+    result = prepare(payload)
+
+    assert result['stats']['freshness_rejected'] == 0
+    assert result['candidates'][0]['freshness_score'] == 3
+
+
+def test_prepare_adds_product_experience_candidates_to_decision_line():
+    payload = {'full_web': {}, 'focus': {'auto': [], '3c': [], 'smart_home': []}}
+    products = [
+        {
+            'title': 'Mate60 Pro第三方充电器实测差距曝光',
+            'link': 'https://post.smzdm.com/p/example/',
+            'platform': '什么值得买',
+            'content_type': '体验/评测',
+            'creative_score': 88,
+            '_keyword': '充电器',
+            'comment_count': 10,
+            'collection_count': 40,
+            'up_count': 60,
+        }
+    ]
+    result = prepare(payload, product_items=products)
+    candidate = result['candidates'][0]
+    assert candidate['candidate_type'] == 'product_experience'
+    assert candidate['default_content_line'] == 'decision'
+    assert candidate['url'] == 'https://post.smzdm.com/p/example/'
+    assert result['stats']['product_candidate_count'] == 1
+
+
+def test_prepare_reserves_slots_for_product_experience_when_hotspots_are_full():
+    payload = {
+        'full_web': {
+            'technology_ai': [item(f'AI热点{i}', age=2, platforms=5, url=f'https://ai/{i}') for i in range(4)],
+            'finance_policy': [item(f'财经热点{i}', age=2, platforms=5, url=f'https://finance/{i}') for i in range(4)],
+            'sports': [item(f'体育热点{i}', age=2, platforms=5, url=f'https://sports/{i}') for i in range(4)],
+            'entertainment': [item(f'文娱热点{i}', age=2, platforms=5, url=f'https://fun/{i}') for i in range(4)],
+        },
+        'focus': {'auto': [], '3c': [], 'smart_home': []},
+    }
+    products = [
+        {
+            'title': f'产品体验{i}',
+            'link': f'https://post.smzdm.com/p/{i}/',
+            'platform': '什么值得买',
+            'content_type': '体验/评测',
+            'creative_score': 88,
+        }
+        for i in range(3)
+    ]
+    result = prepare(payload, limit=8, product_items=products)
+    assert len(result['candidates']) == 8
+    assert result['stats']['product_candidate_count'] >= 1

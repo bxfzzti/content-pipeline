@@ -9,7 +9,19 @@ from pathlib import Path
 from typing import Any
 
 
-REQUIRED_TEXT = ('core_judgment', 'recommended_angle', 'risk', 'reader_start')
+REQUIRED_TEXT = (
+    'core_judgment',
+    'recommended_angle',
+    'risk',
+    'reader_start',
+    'line_reason',
+    'next_stage_requirement',
+)
+CONTENT_LINES = {
+    'hot_take': '热点观点线',
+    'decision': '消费决策线',
+    'framework': '长期框架线',
+}
 
 
 def level_for(score: int) -> str:
@@ -25,9 +37,16 @@ def level_for(score: int) -> str:
 def valid_judgment(judgment: dict[str, Any]) -> bool:
     try:
         scores_valid = all(1 <= int(judgment[name]) <= 5 for name in ('emotion_score', 'relevance_score'))
+        asset_valid = 1 <= int(judgment.get('asset_value')) <= 5
     except (KeyError, TypeError, ValueError):
         return False
-    return scores_valid and all(str(judgment.get(name) or '').strip() for name in REQUIRED_TEXT)
+    content_line = str(judgment.get('content_line') or '')
+    return (
+        scores_valid
+        and asset_valid
+        and content_line in CONTENT_LINES
+        and all(str(judgment.get(name) or '').strip() for name in REQUIRED_TEXT)
+    )
 
 
 def finalize(candidates_payload: dict[str, Any], judgments_payload: dict[str, Any], maximum: int = 10) -> dict[str, Any]:
@@ -71,6 +90,9 @@ def finalize(candidates_payload: dict[str, Any], judgments_payload: dict[str, An
         merged.append({
             **candidate,
             **{key: judgment[key] for key in REQUIRED_TEXT},
+            'content_line': judgment['content_line'],
+            'content_line_label': CONTENT_LINES[judgment['content_line']],
+            'asset_value': int(judgment.get('asset_value') or 0),
             'six_question_pass_count': int(judgment.get('six_question_pass_count') or 0),
             'dimensions': dimensions,
             'writing_value_score': total,
@@ -128,6 +150,10 @@ def finalize(candidates_payload: dict[str, Any], judgments_payload: dict[str, An
             'valid_model_judgments': len(by_id),
             'formal_recommendation_count': len(selected),
             'minimum_met': len(selected) >= 5,
+            'content_line_counts': {
+                line: sum(item.get('content_line') == line for item in selected)
+                for line in CONTENT_LINES
+            },
         },
         'recommendations': selected,
         'reserve': reserve,
@@ -143,20 +169,29 @@ def render_markdown(result: dict[str, Any]) -> str:
         lines.append('结论：本轮没有完成语义判断的合格选题。')
     if result.get('contract_error'):
         lines.extend(['', f"> 契约校验失败：{result['contract_error']}。拒绝复用上一轮模型判断。"])
-    lines.extend(['', f"正式推荐 {len(recommendations)} 条：", ''])
-    for index, item in enumerate(recommendations, 1):
-        d = item['dimensions']
-        lines.extend([
-            f"## {index}. {item['title']} — {item['writing_value_score']}/50 — {item['level']}",
-            '',
-            f"- 五维：全网热度 {d['heat']}，时效性 {d['freshness']}，讨论热度 {d['discussion']}，情绪强度 {d['emotion']}，内容关联度 {d['relevance']}",
-            f"- 核心判断：{item['core_judgment']}",
-            f"- 推荐角度：{item['recommended_angle']}",
-            f"- 反面理由：{item['risk']}",
-            f"- 读者起点：{item['reader_start']}",
-            f"- 原文：{item['url']}",
-            '',
-        ])
+    lines.extend(['', f"正式推荐 {len(recommendations)} 条，按内容线分组：", ''])
+    for line, label in CONTENT_LINES.items():
+        group = [item for item in recommendations if item.get('content_line') == line]
+        lines.extend([f"## {label}（{len(group)} 条）", ''])
+        if not group:
+            lines.extend(['- 本轮没有足够强的候选题。', ''])
+            continue
+        for index, item in enumerate(group, 1):
+            d = item['dimensions']
+            lines.extend([
+                f"### {index}. {item['title']} — {item['writing_value_score']}/50 — {item['level']}",
+                '',
+                f"- 五维：全网热度 {d['heat']}，时效性 {d['freshness']}，讨论热度 {d['discussion']}，情绪强度 {d['emotion']}，内容关联度 {d['relevance']}",
+                f"- 内容线判断：{item['content_line_label']}，{item['line_reason']}",
+                f"- 账号资产价值：{item['asset_value']}/5",
+                f"- 核心判断：{item['core_judgment']}",
+                f"- 推荐角度：{item['recommended_angle']}",
+                f"- 反面理由：{item['risk']}",
+                f"- 读者起点：{item['reader_start']}",
+                f"- 下一步要求：{item['next_stage_requirement']}",
+                f"- 原文：{item['url']}",
+                '',
+            ])
     if result['reserve']:
         lines.extend(['## 储备', ''])
         for item in result['reserve']:

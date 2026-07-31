@@ -69,6 +69,10 @@ def validate_screening(root: Path) -> list[str]:
                 expected = sum(int(value) for value in dimensions.values()) * 2
                 if expected != item.get('writing_value_score'):
                     errors.append(f"score mismatch: {item.get('candidate_id')}")
+                if item.get('content_line') not in {'hot_take', 'decision', 'framework'}:
+                    errors.append(f"missing content_line: {item.get('candidate_id')}")
+                if not item.get('line_reason'):
+                    errors.append(f"missing line_reason: {item.get('candidate_id')}")
         except (OSError, ValueError, TypeError) as exc:
             errors.append(f'invalid screening json: {exc}')
     return errors

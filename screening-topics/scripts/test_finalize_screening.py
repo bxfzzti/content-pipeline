@@ -32,10 +32,14 @@ def judgment(index, emotion=4, relevance=5):
         'candidate_id': f'C{index:02d}',
         'emotion_score': emotion,
         'relevance_score': relevance,
+        'content_line': 'decision',
+        'line_reason': f'内容线理由{index}',
+        'asset_value': 4,
         'core_judgment': f'判断{index}',
         'recommended_angle': f'角度{index}',
         'risk': f'风险{index}',
         'reader_start': f'起点{index}',
+        'next_stage_requirement': f'下一步{index}',
         'six_question_pass_count': 5,
     }
 
@@ -45,6 +49,8 @@ def test_finalize_calculates_total_in_code():
     item = result['recommendations'][0]
     assert item['writing_value_score'] == 44
     assert item['level'] == 'S级'
+    assert item['content_line'] == 'decision'
+    assert item['content_line_label'] == '消费决策线'
 
 
 def test_finalize_requires_complete_model_judgment():
@@ -53,6 +59,13 @@ def test_finalize_requires_complete_model_judgment():
     result = finalize(candidate_payload([candidate(1)]), judgment_payload([incomplete]))
     assert result['stats']['valid_model_judgments'] == 0
     assert result['stats']['minimum_met'] is False
+
+
+def test_finalize_requires_content_line():
+    incomplete = judgment(1)
+    incomplete.pop('content_line')
+    result = finalize(candidate_payload([candidate(1)]), judgment_payload([incomplete]))
+    assert result['stats']['valid_model_judgments'] == 0
 
 
 def test_finalize_enforces_brand_and_auto_diversity():
@@ -71,6 +84,7 @@ def test_render_warns_instead_of_padding_when_fewer_than_five():
     result = finalize(candidate_payload(candidates), judgment_payload(judgments))
     markdown = render_markdown(result)
     assert '实际 3 条' in markdown
+    assert '## 消费决策线（3 条）' in markdown
 
 
 def test_low_relevance_cannot_enter_formal_recommendations():

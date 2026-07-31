@@ -13,7 +13,7 @@ description: 筛选题时使用。接收热点列表，跑六问审查 + 内容�
 
 完成后必须生成 `/tmp/article-pipeline/02a-model-judgments.json`、`02-topic-suggestion.json` 和 `02-topic-suggestion.md`。不得再使用「manual_screening」降级文本代替结构化结果。
 
-聊天中输出至少 5 个、最多 10 个选题的紧凑结果：标题、总分、核心判断、推荐角度、反面理由、原文链接。六问和各维度展开写入产物文件，不在聊天中逐条铺开，不使用 Markdown 表格。
+聊天中输出至少 5 个、最多 10 个选题的紧凑结果：标题、内容线、总分、核心判断、推荐角度、反面理由、原文链接。六问和各维度展开写入产物文件，不在聊天中逐条铺开，不使用 Markdown 表格。
 
 开始前必须读取并校验 `/tmp/article-pipeline/01c-screening-candidates.json`。该文件由热点脚本确定性生成，最多 15 条；模型禁止重新扫描完整热点池、重新搜索或加入短名单之外的话题。统一输入契约见 `../article-pipeline/references/hotspot-output-contract.md`。
 
@@ -21,7 +21,7 @@ description: 筛选题时使用。接收热点列表，跑六问审查 + 内容�
 
 代码负责：时效门槛、全网热度、时效性、讨论热度、同事件去重、短名单、总分、等级、排序、数量和品类配比。
 
-模型只负责：情绪强度、内容关联度、核心判断、推荐角度、反面理由、读者认知起点和六问通过数。
+模型只负责：情绪强度、内容关联度、内容线判断、账号资产价值、核心判断、推荐角度、反面理由、读者认知起点、下一步要求和六问通过数。
 
 模型不得输出或修改 `heat_score`、`freshness_score`、`discussion_score`、`writing_value_score` 和等级。
 
@@ -46,16 +46,28 @@ description: 筛选题时使用。接收热点列表，跑六问审查 + 内容�
     "candidate_id": "C01",
     "emotion_score": 4,
     "relevance_score": 5,
+    "content_line": "hot_take / decision / framework",
+    "line_reason": "为什么这条题应该走这条内容线",
+    "asset_value": 4,
     "core_judgment": "一句明确判断",
     "recommended_angle": "一个最值得写的角度",
     "risk": "最严重的反面理由",
     "reader_start": "读者第一反应",
+    "next_stage_requirement": "进入下一步前必须补的证据或必须选择的模板",
     "six_question_pass_count": 5
   }]
 }
 ```
 
 `run_id` 是本轮契约键，禁止省略或自行生成。终审脚本会拒绝任何上一轮遗留的模型判断。
+
+`content_line` 是正式筛选结果的一等字段，不是展示标签：
+
+- `hot_take`：热点观点线，借公共情绪、冲突和新事实输出锐利判断。
+- `decision`：消费决策线，回答买不买、怎么选、避什么坑、产品体验是否可信。
+- `framework`：长期框架线，把热点沉淀成判断方法、选购框架或行业/消费决策模型。
+
+`candidate_type=product_experience` 的候选来自什么值得买等产品体验池，默认优先考虑 `decision`，但模型仍可因单篇体验弱、证据不足或不适合二创而降低关联度或写“不适用”。
 
 ## Step 3: 六问选题审查
 
@@ -102,13 +114,18 @@ python3 ~/.hermes/skills/screening-topics/scripts/finalize_screening.py
 
 按金字塔原理：**先给最终排序结论，再给理由。**
 
-格式：
+格式按内容线分组：
 ```
 结论：今天优先写 A，其次是 B。
 
-1. A — S级 — 为什么值得写 — 2-3个标题
-2. B — A级 — 为什么值得写 — 2-3个标题
-3. C — B级/储备 — 为什么暂缓
+热点观点线：
+1. A — S级 — 为什么值得写 — 下一步要补什么
+
+消费决策线：
+1. B — A级 — 为什么值得写 — 下一步要补什么
+
+长期框架线：
+1. C — B级/储备 — 为什么暂缓或如何沉淀
 ```
 
 完成脚本后不要在模型回复中重述热点或选题，只回复「筛选产物已生成」。运行时会读取 `02-topic-suggestion.md`，并与两层热点确定性组装成最终确认包。
@@ -124,6 +141,7 @@ python3 ~/.hermes/skills/screening-topics/scripts/finalize_screening.py
 - **禁止猜时效**：不得凭模型记忆、品牌知名度或标题措辞判断“刚发布”。单维度 5 分规则不得绕过时效硬门槛。
 - **推荐数量与多样性**：正常至少输出 5 个，最多 10 个；同一事件只保留 1 条，同一品牌最多 2 条，同一车型/产品最多 1 条，汽车默认不超过最终列表一半。若合格候选不足 5 个，必须说明缺口、时效淘汰数量与原因，禁止用旧题或低质量题凑数。
 - **评分口径**：前三项来自代码，后两项来自模型，`writing_value_score` 必须由 `finalize_screening.py` 复算；严禁模型自报总分。
+- **内容线继承**：后续 angle-selection、framing、writing 必须读取 `content_line`。热点观点线优先定立场，消费决策线优先给行动建议，长期框架线优先沉淀方法。
 
 ## 参考
 

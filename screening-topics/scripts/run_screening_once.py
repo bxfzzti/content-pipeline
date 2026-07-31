@@ -29,7 +29,8 @@ def load_env_value(name: str) -> str:
 def compact_candidates(payload: dict) -> list[dict]:
     keys = (
         'candidate_id', 'title', 'url', 'layer', 'category', 'category_label',
-        'platform_count', 'freshness_status',
+        'candidate_type', 'platform_count', 'freshness_status', 'default_content_line',
+        'default_content_line_label', 'line_hint', 'product_keyword', 'product_content_type',
     )
     return [{key: row.get(key) for key in keys} for row in payload.get('candidates') or []]
 
@@ -41,17 +42,26 @@ def build_prompt(payload: dict) -> str:
             'candidate_id': 'C01',
             'emotion_score': '1-5整数',
             'relevance_score': '1-5整数',
+            'content_line': 'hot_take / decision / framework 三选一',
+            'line_reason': '为什么这条题应走这条内容线',
+            'asset_value': '1-5整数，衡量对账号长期资产/信任/复用的价值',
             'core_judgment': '一句明确、锐利、可证成的判断',
             'recommended_angle': '最值得写的角度；不适合则写“不适用”',
             'risk': '最严重的反面理由',
             'reader_start': '读者看到话题的第一反应',
+            'next_stage_requirement': '进入下一步前必须补什么证据或选择什么模板',
             'six_question_pass_count': '0-6整数',
         }],
     }
     return (
         '你是小红书科技与生活产品选题编辑。对每条候选做语义判断，不搜索、不计算总分。\n'
+        '先判断内容线：hot_take=热点观点线，适合借公共情绪和冲突表达锐利判断；'
+        'decision=消费决策线，适合买不买、怎么选、避坑、体验、横评和产品判断；'
+        'framework=长期框架线，适合沉淀判断方法、选购框架、行业/消费决策模型。\n'
+        'candidate_type=product_experience 的题默认优先考虑 decision，但如果只是单篇弱体验，可以降低关联度或写“不适用”。\n'
         '内容关联度优先衡量：科技产品、汽车、3C、智能家居、消费决策是否值得二创。'
         '公共灾害、纯政治、体育等即使很热，关联度也应低。角度必须是结论，不是题材复述。\n'
+        '每条必须输出 content_line、line_reason、asset_value、next_stage_requirement。'
         '只返回一个 JSON 对象，不要 Markdown，不要解释。必须覆盖全部 candidate_id，run_id 原样复制。\n'
         f'输出契约：{json.dumps(contract, ensure_ascii=False)}\n'
         f'候选：{json.dumps(compact_candidates(payload), ensure_ascii=False)}'

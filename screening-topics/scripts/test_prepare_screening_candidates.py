@@ -135,6 +135,45 @@ def test_prepare_adds_product_experience_candidates_to_decision_line():
     assert result['stats']['product_candidate_count'] == 1
 
 
+def test_prepare_routes_auto_product_news_to_decision_line():
+    payload = {
+        'full_web': {},
+        'focus': {
+            'auto': [item('新车预售：25.99万增程SUV对比理想L6怎么选', age=2, platforms=4, url='https://car/product')],
+            '3c': [],
+            'smart_home': [],
+        },
+    }
+    result = prepare(payload)
+    assert result['candidates'][0]['default_content_line'] == 'decision'
+
+
+def test_prepare_keeps_auto_company_finance_as_hot_take():
+    payload = {
+        'full_web': {},
+        'focus': {
+            'auto': [item('营收下滑，中国销量下跌，宝马汽车利润率跌至3.6%', age=2, platforms=4, url='https://car/finance')],
+            '3c': [],
+            'smart_home': [],
+        },
+    }
+    result = prepare(payload)
+    assert result['candidates'][0]['default_content_line'] == 'hot_take'
+
+
+def test_prepare_routes_auto_decision_model_to_framework_line():
+    payload = {
+        'full_web': {},
+        'focus': {
+            'auto': [item('家庭用户买车逻辑：增程和纯电到底怎么判断', age=2, platforms=4, url='https://car/framework')],
+            '3c': [],
+            'smart_home': [],
+        },
+    }
+    result = prepare(payload)
+    assert result['candidates'][0]['default_content_line'] == 'framework'
+
+
 def test_prepare_reserves_slots_for_product_experience_when_hotspots_are_full():
     payload = {
         'full_web': {

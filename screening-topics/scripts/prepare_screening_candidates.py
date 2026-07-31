@@ -44,7 +44,21 @@ DECISION_TERMS = (
     '价格', '配置', '适合', '不适合', '谁该', '谁不该', '怎么选',
 )
 
-FRAMEWORK_TERMS = ('框架', '方法', '清单', '五问', '四象限', '怎么判断', '判断标准', '话术翻译')
+FRAMEWORK_TERMS = (
+    '框架', '方法', '清单', '五问', '四象限', '怎么判断', '判断标准', '话术翻译',
+    '决策模型', '选择逻辑', '选车逻辑', '买车逻辑', '家庭用户', '预算分层',
+)
+
+AUTO_PRODUCT_TERMS = (
+    '车型', '新车', '上市', '发布', '预售', '价格', '售价', '续航', '智驾', '座舱',
+    '底盘', '配置', '试驾', '车主', '增程', '纯电', '混动', 'SUV', 'MPV', '轿车',
+    '买', '选', '对比', '横评', '体验',
+)
+
+AUTO_INDUSTRY_TERMS = (
+    '营收', '利润', '利润率', '财报', '销量', '交付', '裁员', '工厂', '供应链',
+    '战略', '转型', '押注', '行业', '合作', '投资', '融资',
+)
 
 
 def normalized_title(title: str) -> str:
@@ -129,6 +143,12 @@ def default_content_line(item: dict[str, Any]) -> str:
     if any(term in text for term in FRAMEWORK_TERMS):
         return 'framework'
     if item.get('candidate_type') == 'product_experience':
+        return 'decision'
+    if item.get('category') == 'auto':
+        if any(term in text for term in AUTO_PRODUCT_TERMS):
+            return 'decision'
+        if any(term in text for term in AUTO_INDUSTRY_TERMS):
+            return 'hot_take'
         return 'decision'
     if item.get('category') in {'3c', 'smart_home'} or any(term in text for term in DECISION_TERMS):
         return 'decision'

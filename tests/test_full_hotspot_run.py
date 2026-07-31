@@ -10,6 +10,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 from full_hotspot_run import (  # noqa: E402
     SourceSpec,
+    _parse_sse_json,
     build_source_registry,
     resolve_result,
     run_source_batch,
@@ -21,7 +22,20 @@ class FullHotspotRunTests(unittest.TestCase):
         names = {source.name.lower() for source in build_source_registry()}
         self.assertTrue(any(source.kind == "aggregator" for source in build_source_registry()))
         self.assertTrue(any(source.kind == "product" for source in build_source_registry()))
+        self.assertTrue(any(source.kind == "car-search" for source in build_source_registry()))
+        self.assertTrue(any(source.kind == "mcp-tool" for source in build_source_registry()))
+        self.assertIn("dongchedi-site-search", names)
+        self.assertIn("daily-hot-autohome", names)
+        self.assertIn("vertical-auto-search", names)
         self.assertFalse(any("xhs" in name or "xiaohongshu" in name for name in names))
+
+    def test_dongchedi_site_search_runs_before_autohome(self):
+        names = [source.name for source in build_source_registry()]
+        self.assertLess(names.index("dongchedi-site-search"), names.index("daily-hot-autohome"))
+
+    def test_parse_sse_json_extracts_data_payload(self):
+        payload = _parse_sse_json('event: message\ndata: {"jsonrpc":"2.0","result":{"ok":true}}\n\n')
+        self.assertEqual(payload["result"], {"ok": True})
 
     def test_failed_source_uses_cache(self):
         result = resolve_result(

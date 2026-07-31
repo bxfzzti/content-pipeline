@@ -13,6 +13,8 @@ description: >
 
 > 所有内容创作请求都从这里进。plan-first 原则贯穿始终。
 
+顶层内容线契约见 `references/content-line-contract.md`。账号定位、三条内容线、分流标准、评分边界和后续生产协同都以该文件为准；其他 prompt 或脚本不得另起一套内容线定义。
+
 ## 入口路由铁律
 
 - “有什么值得写”“今天写什么”“跑一次”等没有指定阶段的请求，必须由本 Skill 统一编排，禁止直接跳到 `sourcing-hotspots` 或 `screening-topics`。
@@ -156,7 +158,9 @@ Step 8: 知识回写        存入 zvec 知识库（自动）
 1. **热点线**：平台热榜/RSS/hot-aggregator，输出 `/tmp/article-pipeline/01-hotspots-raw.md`。
 2. **产品体验线**：`search-product-experience-posts`，按什么值得买为主、少数派/Chiphell 为补充，输出 `/tmp/article-pipeline/01b-product-experience.md`。
 
-产品体验线用于发现科技类和生活类产品的体验、开箱、横评、吐槽、新品和避坑内容。筛选阶段不要把它混进热点榜；应作为「产品二创候选」单独评分，再和热点选题并列推荐。
+产品体验线用于发现科技类和生活类产品的体验、开箱、横评、吐槽、新品和避坑内容。筛选阶段不要把它伪装成全网热点；应以 `candidate_type=product_experience` 进入统一候选池，默认优先评估为消费决策线，再由模型根据 `references/content-line-contract.md` 判断是否值得写。
+
+内容线按“读者承诺”判断，不按品类硬分。汽车、3C、智能家居都可以写成热点观点、消费决策或经验沉淀：写“我怎么看”是热点观点，写“该不该买/怎么选/该等还是该避”是消费决策，写“这类事情怎么做更划算、更少踩坑、更可复用”是经验沉淀。汽车是高客单价产品，不能因为来源是汽车媒体就默认归为热点观点线。
 
 默认输出必须保留原文链接、短摘录、`creative_score`、分数明细和二创切入。若写入飞书多维表格，使用 `sourcing-hotspots/scripts/smzdm_product_topics.py` 按原文链接去重增补。
 
@@ -372,7 +376,7 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 **⚠️ 热点必须分两层输出（2026-06-17 修正）：**
 - **第一层：全网热点**（不限方向）— 社会/民生、国际、财经/政策、文娱/体育、其他爆点
-- **第二层：关注领域热点** — 汽车媒体、3C 数码、智能家居
+- **第二层：关注领域热点** — 汽车产品/行业、3C 数码、智能家居
 
 不能只输出关注领域热点。全网热点先按热度排序，再看关注领域。这样既能捕捉"大话题"（如高考、中东局势），也能保留"精准话题"（如华为智驾）。
 
@@ -557,13 +561,14 @@ delegate_task(goal="正文质检", context="完整正文+6条检查清单+模板
 
 ## 参考文件
 
+- `references/content-line-contract.md` — 内容线总契约（账号定位、三条内容线、分流标准、评分边界、生产协同）
 - `references/dedao-content-methodology.md` — 得到品控方法论
 - `references/xhs-commercial-content-style.md` — 商单内容体验化写法
 - `references/boss-content-strategy.md` — 品牌知识图谱+选题策略（原content-engine）
 - `references/product-article-angles.md` — 产品文章角度库（原content-engine）
 - `references/ifanr-content-analysis.md` — 爱范儿内容模式分析（原content-engine）
 - `references/structure-agent-prompt.md` — 结构Agent prompt v4（决策树选框架+配套钩子+自检清单）
-- `../screening-topics/references/screening-agent-prompt.md` — 筛选 Agent prompt v5（50分制评分含全网热度维度+两层筛选）
+- `../screening-topics/references/screening-agent-prompt.md` — 筛选 Agent prompt（三线并行评分+内容线主线选择）
 - `references/hotspot-output-contract.md` — 热点阶段唯一输出契约（全网分类在前、关注方向在后、完成展示后再评分）
 - `references/message-format.md` — 结构化信息传递格式规范（主 Agent 调用 Skill/子 Agent 时的标准化输入输出格式）
 - `references/quality-agent-prompt.md` — 质检Agent prompt v3（L0-L5六层检查+严重程度量化+平台适配+读者体验模拟+删减建议+迭代管理）

@@ -62,6 +62,8 @@ description: >
 - 服务健康时复用现有进程，只有健康检查失败时才启动，不再每次强制杀进程。
 - 热点阶段只抓取、过滤和筛选，不运行 Linkly、zvec、深度网页核验、评论研究或生图。
 - 产品体验结果写入本地后，飞书同步使用 `--sync-existing`，不得重新抓取。
+- 懂车帝是汽车垂直媒体第一优先级：生产流不使用第三方聚合 API；先跑 `site:dongchedi.com` 公开搜索补链，再跑汽车之家、易车等补充源。
+- 汽车垂直搜索结果写入 `/tmp/article-pipeline/01d-vertical-auto-search.json`，并进入热点展示的「汽车媒体」栏；其证据类型为 `search_index`，筛选时低权重通过，发布前必须点开原文核验时效。
 
 ## 禁止个人小红书登录态（最高优先级）
 
@@ -118,10 +120,12 @@ python sourcing-hotspots/scripts/smzdm_product_topics.py --output-dir output --s
 > - **家居补充RSS**（72h窗口）— IT之家RSS + 爱范儿RSS + TheVerge SmartHome + HomeKit News + Home Assistant Blog（hot-aggregator天然缺失家居内容）
 > - **Twitter AI大佬追踪** — 用浏览器+cookie访问Twitter搜索，追踪AI行业核心声音（sama/karpathy/DarioAmodei/DrJimFan/ylecun/elonmusk/AndrewYNg/JeffDean/ilyasut），cookie存储在 `~/.hermes/cookies/twitter.json`
 > - **什么值得买（SMZDM）** — 用cookie访问SMZDM好价/资讯，补充家居/3C品类数据，cookie存储在 `~/.hermes/cookies/smzdm.json`
+> - **懂车帝优先源** — 只用 `site:dongchedi.com` 公开搜索索引补链，输出标题、摘要、来源、原文链接；不调用第三方聚合 API，不使用登录态、Cookie 或逆向接口。
+> - **汽车垂直搜索补链** — 懂车帝优先，其次汽车之家、易车、车东西、第一电动、42号车库；统一通过公开搜索索引补链，作为汽车关注方向的低权重候选。
 > - **Twitter/X**（cookie登录态）— `~/.hermes/cookies/twitter.json`，可用于追踪AI行业大佬动态（替代关键词过滤）
 > - **公众号搜索**（辅助源）— `wechat_downloader.py search "关键词" --no-read`，通过搜狗搜索微信公众号文章标题。用于发现 RSS/hot-aggregator 覆盖不到的深度内容。详见 `wechat_downloader` skill。
 >
-> ⚠️ **搜索引擎不可用**：DDG/Google/Bing均屏蔽服务器IP，热点搜索只能依赖RSS+hot-aggregator+cookie登录态平台。
+> ⚠️ **搜索引擎补链是非阻塞源**：DDG/Google/Bing 可能被屏蔽或限流；失败时必须标记 `unavailable` 或读取缓存，不能拖慢两分钟热点任务。
 
 ## ⚠️ 执行规范（每次必须遵守）
 

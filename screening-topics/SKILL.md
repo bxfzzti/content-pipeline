@@ -7,23 +7,25 @@ description: 筛选题时使用。接收热点列表，跑六问审查 + 内容�
 
 接收代码预筛短名单 → 模型补充语义判断 → 代码复算并输出 S/A/B 级选题建议。**只出建议，不写正文。**
 
+内容线、账号定位、分流问题、打分边界和生产协同以 `../article-pipeline/references/content-line-contract.md` 为顶层契约。本 skill 只执行筛选，不重新定义账号定位。
+
 ## 产物与进度（强制）
 
 开始时先发进度：「正在跑 2/7 选题筛选，会做六问审查、内容策略三问和 zvec 去重。」
 
 完成后必须生成 `/tmp/article-pipeline/02a-model-judgments.json`、`02-topic-suggestion.json` 和 `02-topic-suggestion.md`。不得再使用「manual_screening」降级文本代替结构化结果。
 
-聊天中输出至少 5 个、最多 10 个选题的紧凑结果：标题、总分、核心判断、推荐角度、反面理由、原文链接。六问和各维度展开写入产物文件，不在聊天中逐条铺开，不使用 Markdown 表格。
+聊天中输出至少 5 个、最多 10 个选题的紧凑结果：标题、内容线、总分、核心判断、推荐角度、反面理由、原文链接。六问和各维度展开写入产物文件，不在聊天中逐条铺开，不使用 Markdown 表格。
 
 开始前必须读取并校验 `/tmp/article-pipeline/01c-screening-candidates.json`。该文件由热点脚本确定性生成，最多 15 条；模型禁止重新扫描完整热点池、重新搜索或加入短名单之外的话题。统一输入契约见 `../article-pipeline/references/hotspot-output-contract.md`。
 
 ## 固定分工（强制）
 
-代码负责：时效门槛、全网热度、时效性、讨论热度、同事件去重、短名单、总分、等级、排序、数量和品类配比。
+代码负责：时效门槛、全网热度、时效性、讨论热度、同事件去重、短名单、三线加权得分、主线选择、等级、排序、数量和品类配比。
 
-模型只负责：情绪强度、内容关联度、核心判断、推荐角度、反面理由、读者认知起点和六问通过数。
+模型只负责：情绪强度、内容关联度、三条线的语义因子评分、账号资产价值、核心判断、推荐角度、反面理由、读者认知起点、下一步要求和六问通过数。
 
-模型不得输出或修改 `heat_score`、`freshness_score`、`discussion_score`、`writing_value_score` 和等级。
+模型不得输出或修改 `heat_score`、`freshness_score`、`discussion_score`、`writing_value_score`、最终 `content_line` 和等级。最终主线由代码按三线得分选择。
 
 ## Step 1: 接收代码短名单
 
@@ -46,16 +48,54 @@ description: 筛选题时使用。接收热点列表，跑六问审查 + 内容�
     "candidate_id": "C01",
     "emotion_score": 4,
     "relevance_score": 5,
+    "content_line": "hot_take / decision / experience，模型建议线，最终以代码复算为准",
+    "hot_take_factors": {"sharpness": 4},
+    "decision_factors": {
+      "purchase_confusion": 5,
+      "choice_cost": 4,
+      "evidence": 4,
+      "actionability": 5,
+      "save_value": 4
+    },
+    "experience_factors": {
+      "reusability": 4,
+      "step_clarity": 4,
+      "operability": 4,
+      "case_transfer": 3,
+      "long_tail": 4
+    },
+    "line_reasons": {
+      "hot_take": "作为热点观点线的理由",
+      "decision": "作为消费决策线的理由",
+      "experience": "作为经验沉淀线的理由"
+    },
+    "line_tradeoff": "为什么主线优于另外两条线",
+    "asset_value": 4,
     "core_judgment": "一句明确判断",
     "recommended_angle": "一个最值得写的角度",
     "risk": "最严重的反面理由",
     "reader_start": "读者第一反应",
+    "next_stage_requirement": "进入下一步前必须补的证据或必须选择的模板",
     "six_question_pass_count": 5
   }]
 }
 ```
 
 `run_id` 是本轮契约键，禁止省略或自行生成。终审脚本会拒绝任何上一轮遗留的模型判断。
+
+`content_line` 是正式筛选结果的一等字段，不是展示标签；但模型只给建议线，最终以代码三线加权得分为准：
+
+- `hot_take`：热点观点线，借公共情绪、冲突和新事实输出锐利判断。
+- `decision`：消费决策线，回答买不买、怎么选、避什么坑、产品体验是否可信。
+- `experience`：经验沉淀线，分享大家都可以用的经验、步骤、避坑和更聪明的做法。
+
+内容线按“读者承诺”判断，不按品类硬分。汽车、3C、智能家居都可以进入三条线：写“我怎么看”是 `hot_take`，写“该不该买/怎么选/该等还是该避”是 `decision`，写“这类事情怎么做更划算、更少踩坑、更可复用”是 `experience`。汽车是高客单价产品，不能因为来源是汽车媒体就默认归为热点观点线。
+
+优先按三问分流：读者要我怎么看 → `hot_take`；读者要怎么选 → `decision`；读者要怎么做更聪明 → `experience`。如果三条线都能写，由代码按三套权重打分后选择主线。
+
+`experience` 有硬门槛：必须能写成可复用经验、至少 3 个步骤，并能用案例演示。比如“怎么买 iPhone 18 最划算”是经验沉淀线，因为用户已经决定要买，问题是怎么买更聪明。
+
+`candidate_type=product_experience` 的候选来自什么值得买等产品体验池，默认优先考虑 `decision`，但模型仍可因单篇体验弱、证据不足或不适合二创而降低关联度或写“不适用”。
 
 ## Step 3: 六问选题审查
 
@@ -102,13 +142,18 @@ python3 ~/.hermes/skills/screening-topics/scripts/finalize_screening.py
 
 按金字塔原理：**先给最终排序结论，再给理由。**
 
-格式：
+格式按内容线分组：
 ```
 结论：今天优先写 A，其次是 B。
 
-1. A — S级 — 为什么值得写 — 2-3个标题
-2. B — A级 — 为什么值得写 — 2-3个标题
-3. C — B级/储备 — 为什么暂缓
+热点观点线：
+1. A — S级 — 为什么值得写 — 下一步要补什么
+
+消费决策线：
+1. B — A级 — 为什么值得写 — 下一步要补什么
+
+经验沉淀线：
+1. C — B级/储备 — 为什么暂缓或如何沉淀
 ```
 
 完成脚本后不要在模型回复中重述热点或选题，只回复「筛选产物已生成」。运行时会读取 `02-topic-suggestion.md`，并与两层热点确定性组装成最终确认包。
@@ -123,10 +168,13 @@ python3 ~/.hermes/skills/screening-topics/scripts/finalize_screening.py
 - **时效性硬门槛**：必须读取 `published_at/age_hours/freshness_status`。0-24h 强时效，24-48h 正常；48-72h 默认转储备，只有跨 3+ 平台且最近 24h 有新证据才能推荐；超过 72h 禁止进入“今天推荐”。实时热榜缺发布时间时可用当前榜单作证，普通文章缺时间不得进入 S/A 级。
 - **禁止猜时效**：不得凭模型记忆、品牌知名度或标题措辞判断“刚发布”。单维度 5 分规则不得绕过时效硬门槛。
 - **推荐数量与多样性**：正常至少输出 5 个，最多 10 个；同一事件只保留 1 条，同一品牌最多 2 条，同一车型/产品最多 1 条，汽车默认不超过最终列表一半。若合格候选不足 5 个，必须说明缺口、时效淘汰数量与原因，禁止用旧题或低质量题凑数。
-- **评分口径**：前三项来自代码，后两项来自模型，`writing_value_score` 必须由 `finalize_screening.py` 复算；严禁模型自报总分。
+- **评分口径**：模型给三条线的语义因子分，`writing_value_score` 必须由 `finalize_screening.py` 按权重复算为 0-100；严禁模型自报总分。
+- **内容线来自分数**：内容线不是单独标签，而是三线加权得分最高的主线；副线只作为二创备选。
+- **内容线继承**：后续 angle-selection、framing、writing 必须读取 `content_line`。热点观点线优先定立场，消费决策线优先给行动建议，经验沉淀线优先沉淀步骤和做法。
 
 ## 参考
 
 - 关键词体系、KOL 账号、五问详情、传播势能标准、多方向模式：`references/screening-reference.md`
+- 内容线总契约：`../article-pipeline/references/content-line-contract.md`
 - 坑位记录：`references/pitfalls.md`
 - 筛选 Agent prompt：`references/screening-agent-prompt.md`

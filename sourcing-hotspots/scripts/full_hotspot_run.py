@@ -65,6 +65,9 @@ class SourceResult:
 def build_source_registry() -> list[SourceSpec]:
     specs = [SourceSpec("hot-aggregator", "aggregator", "http://127.0.0.1:6688/api/all", timeout_seconds=90)]
     specs.extend(SourceSpec(name, "rss", url, group, 10) for name, url, group in RSS_SOURCES)
+    specs.append(SourceSpec("dongchedi-site-search", "car-search", group="dongchedi", timeout_seconds=35))
+    specs.append(SourceSpec("daily-hot-autohome", "mcp-tool", timeout_seconds=20))
+    specs.append(SourceSpec("vertical-auto-search", "car-search", group="supplement", timeout_seconds=45))
     specs.append(SourceSpec("product-experience", "product", timeout_seconds=90))
     return specs
 
@@ -150,6 +153,68 @@ def _fetch_json(url: str, timeout: float) -> Any:
     request = urllib.request.Request(url, headers={"User-Agent": "content-pipeline/0.7"})
     with urllib.request.urlopen(request, timeout=max(0.2, timeout)) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _post_mcp_json(url: str, body: dict[str, Any], timeout: float, session_id: Optional[str] = None) -> tuple[dict[str, str], str]:
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    if session_id:
+        headers["Mcp-Session-Id"] = session_id
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=max(0.2, timeout)) as response:
+        return dict(response.headers.items()), response.read().decode("utf-8", errors="ignore")
+
+
+def _parse_sse_json(text: str) -> dict[str, Any]:
+    for line in text.splitlines():
+        if line.startswith("data: "):
+            return json.loads(line[6:])
+    return json.loads(text)
+
+
+def call_daily_hot_tool(tool_name: str, timeout: float) -> Any:
+    url = os.environ.get("DAILY_HOT_MCP_URL", "http://127.0.0.1:8000/mcp")
+    headers, init_text = _post_mcp_json(
+        url,
+        {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "content-pipeline", "version": "1.0"},
+            },
+            "id": 1,
+        },
+        timeout,
+    )
+    session_id = headers.get("mcp-session-id") or headers.get("Mcp-Session-Id")
+    if not session_id:
+        raise RuntimeError(f"MCP initialize missing session id: {init_text[:200]}")
+    _post_mcp_json(url, {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}, timeout, session_id)
+    _, call_text = _post_mcp_json(
+        url,
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": {"args": {}}},
+            "id": 2,
+        },
+        timeout,
+        session_id,
+    )
+    payload = _parse_sse_json(call_text)
+    if payload.get("error"):
+        raise RuntimeError(json.dumps(payload["error"], ensure_ascii=False))
+    content = ((payload.get("result") or {}).get("content") or [])
+    if not content:
+        return []
+    text = content[0].get("text", "")
+    return json.loads(text)
 
 
 def _text(node: Optional[ET.Element], *names: str) -> str:
@@ -248,6 +313,41 @@ def make_fetcher(output_dir: Path, script_dir: Path) -> Callable[[SourceSpec, fl
                 text=True,
             )
             return json.loads((product_dir / "smzdm_product_topics_items.json").read_text(encoding="utf-8"))
+        if spec.kind == "car-search":
+            output_path = output_dir / ("01d-dongchedi-site-search.json" if spec.group == "dongchedi" else "01d-vertical-auto-search.json")
+            max_searches = "10" if spec.group == "dongchedi" else "12"
+            command = [
+                sys.executable,
+                str(script_dir / "search_car_keywords.py"),
+                "--output",
+                str(output_path),
+                "--max-searches",
+                max_searches,
+                "--max-vertical-brands",
+                "8",
+                "--limit-per-query",
+                "3",
+                "--timeout",
+                "3",
+                "--no-general-search",
+            ]
+            if spec.group == "dongchedi":
+                command.extend(["--include-sites", "dongchedi.com"])
+            elif spec.group == "supplement":
+                command.extend(["--exclude-sites", "dongchedi.com"])
+            subprocess.run(
+                command,
+                check=True,
+                timeout=timeout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            return json.loads(output_path.read_text(encoding="utf-8"))
+        if spec.kind == "mcp-tool":
+            if spec.name == "daily-hot-autohome":
+                return call_daily_hot_tool("get-autohome-trending", timeout)
+            raise ValueError(f"unsupported mcp tool source: {spec.name}")
         raise ValueError(f"unsupported source kind: {spec.kind}")
 
     return fetch
@@ -272,7 +372,12 @@ def _manifest_entries(results: list[SourceResult]) -> list[dict[str, Any]]:
                     }
                 )
             continue
-        count = len(result.data) if isinstance(result.data, list) else int(result.data is not None)
+        if isinstance(result.data, list):
+            count = len(result.data)
+        elif isinstance(result.data, dict) and isinstance(result.data.get("results"), list):
+            count = len(result.data["results"])
+        else:
+            count = int(result.data is not None)
         entries.append(
             {
                 "name": result.name,
@@ -315,13 +420,64 @@ def write_outputs(output_dir: Path, results: list[SourceResult], script_dir: Pat
     intl_path.write_text(json.dumps(intl, ensure_ascii=False, indent=2), encoding="utf-8")
     home_path.write_text(json.dumps(home, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    dongchedi_result = by_name.get("dongchedi-site-search")
+    car_search_result = by_name.get("vertical-auto-search")
+    autohome_result = by_name.get("daily-hot-autohome")
+    car_search_path = output_dir / "01d-vertical-auto-search.json"
+    car_supplement_results: list[dict[str, Any]] = []
+    if dongchedi_result and isinstance(dongchedi_result.data, dict):
+        (output_dir / "01d-dongchedi-site-search.json").write_text(
+            json.dumps(dongchedi_result.data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        car_supplement_results.extend(dongchedi_result.data.get("results") or [])
+    if car_search_result and isinstance(car_search_result.data, dict):
+        car_supplement_results.extend(car_search_result.data.get("results") or [])
+    if autohome_result and isinstance(autohome_result.data, list):
+        (output_dir / "01e-autohome-trending.json").write_text(
+            json.dumps(autohome_result.data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        for item in autohome_result.data:
+            car_supplement_results.append(
+                {
+                    "title": item.get("title", ""),
+                    "snippet": item.get("desc", ""),
+                    "source": item.get("source", "汽车之家"),
+                    "url": item.get("url", ""),
+                    "query": "daily-hot:get-autohome-trending",
+                    "site": "autohome.com.cn",
+                    "intent": item.get("category", "汽车之家热榜"),
+                }
+            )
+    car_search_path.write_text(
+        json.dumps(
+            {
+                "search_time": datetime.now(timezone.utc).isoformat(),
+                "total_results": len(car_supplement_results),
+                "results": car_supplement_results,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
     filter_proc = subprocess.run(
-        [sys.executable, str(script_dir / "filter_all_categories.py"), str(output_dir / "01-hotspots-raw.json"), str(intl_path), str(home_path), str(output_dir)],
+        [
+            sys.executable,
+            str(script_dir / "filter_all_categories.py"),
+            str(output_dir / "01-hotspots-raw.json"),
+            str(intl_path),
+            str(home_path),
+            str(output_dir),
+            str(car_search_path),
+        ],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        timeout=15,
+        timeout=30,
     )
     entries = _manifest_entries(results)
     counts = {status: sum(entry["status"] == status for entry in entries) for status in ("live", "cache", "unavailable", "disabled")}
@@ -355,6 +511,18 @@ def write_outputs(output_dir: Path, results: list[SourceResult], script_dir: Pat
             presentation_valid = False
     manifest["presentation_valid"] = presentation_valid
 
+    product_result = by_name.get("product-experience")
+    product_dir = output_dir / "product-run"
+    product_json_path = output_dir / "01b-product-experience.json"
+    if product_result and product_result.data is not None:
+        product_json_path.write_text(json.dumps(product_result.data, ensure_ascii=False, indent=2), encoding="utf-8")
+        report = product_dir / "smzdm_product_topics_report.md"
+        rows = product_dir / "smzdm_product_topics_rows.json"
+        if report.exists():
+            shutil.copy2(report, output_dir / "01b-product-experience.md")
+        if rows.exists():
+            shutil.copy2(rows, output_dir / "01b-product-experience-rows.json")
+
     shortlist_path = output_dir / "01c-screening-candidates.json"
     shortlist_valid = False
     shortlist_count = 0
@@ -368,6 +536,8 @@ def write_outputs(output_dir: Path, results: list[SourceResult], script_dir: Pat
                 str(presentation_path),
                 "--output",
                 str(shortlist_path),
+                "--product-input",
+                str(product_json_path),
                 "--limit",
                 "12",
             ],
@@ -387,16 +557,6 @@ def write_outputs(output_dir: Path, results: list[SourceResult], script_dir: Pat
     manifest["screening_shortlist_valid"] = shortlist_valid
     manifest["screening_shortlist_count"] = shortlist_count
 
-    product_result = by_name.get("product-experience")
-    product_dir = output_dir / "product-run"
-    if product_result and product_result.data is not None:
-        (output_dir / "01b-product-experience.json").write_text(json.dumps(product_result.data, ensure_ascii=False, indent=2), encoding="utf-8")
-        report = product_dir / "smzdm_product_topics_report.md"
-        rows = product_dir / "smzdm_product_topics_rows.json"
-        if report.exists():
-            shutil.copy2(report, output_dir / "01b-product-experience.md")
-        if rows.exists():
-            shutil.copy2(rows, output_dir / "01b-product-experience-rows.json")
     return manifest
 
 

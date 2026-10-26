@@ -9,25 +9,183 @@ from pathlib import Path
 from typing import Any
 
 
-REQUIRED_TEXT = ('core_judgment', 'recommended_angle', 'risk', 'reader_start')
+REQUIRED_TEXT = (
+    'core_judgment',
+    'recommended_angle',
+    'risk',
+    'reader_start',
+    'next_stage_requirement',
+)
+CONTENT_LINES = {
+    'hot_take': '热点观点线',
+    'decision': '消费决策线',
+    'experience': '经验沉淀线',
+}
+LEGACY_LINE_ALIASES = {'framework': 'experience'}
+LINE_TIE_PRIORITY = {'decision': 3, 'hot_take': 2, 'experience': 1}
+
+LINE_WEIGHTS = {
+    'hot_take': {
+        'heat': 0.25,
+        'freshness': 0.25,
+        'discussion': 0.20,
+        'emotion': 0.20,
+        'sharpness': 0.10,
+    },
+    'decision': {
+        'purchase_confusion': 0.25,
+        'choice_cost': 0.20,
+        'evidence': 0.20,
+        'actionability': 0.25,
+        'save_value': 0.10,
+    },
+    'experience': {
+        'reusability': 0.25,
+        'step_clarity': 0.20,
+        'operability': 0.20,
+        'case_transfer': 0.20,
+        'long_tail': 0.15,
+    },
+}
 
 
 def level_for(score: int) -> str:
-    if score >= 40:
+    if score >= 80:
         return 'S级'
-    if score >= 30:
+    if score >= 65:
         return 'A级'
-    if score >= 20:
+    if score >= 50:
         return 'B级/储备'
     return '不推荐'
 
 
+def normalize_line(line: Any) -> str:
+    value = str(line or '')
+    return LEGACY_LINE_ALIASES.get(value, value)
+
+
+def int_score(value: Any) -> int:
+    score = int(value)
+    if not 1 <= score <= 5:
+        raise ValueError('score out of range')
+    return score
+
+
+def score_from_factors(factors: dict[str, int], weights: dict[str, float]) -> int:
+    total = sum((factors[name] / 5) * weight * 100 for name, weight in weights.items())
+    return int(round(total))
+
+
+def nested_scores(payload: dict[str, Any], key: str, names: tuple[str, ...]) -> dict[str, int]:
+    group = payload.get(key)
+    if not isinstance(group, dict):
+        raise ValueError(f'missing {key}')
+    return {name: int_score(group[name]) for name in names}
+
+
+def compute_line_scores(candidate: dict[str, Any], judgment: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    hot_take_factors = {
+        'heat': int_score(candidate['heat_score']),
+        'freshness': int_score(candidate['freshness_score']),
+        'discussion': int_score(candidate['discussion_score']),
+        'emotion': int_score(judgment['emotion_score']),
+        **nested_scores(judgment, 'hot_take_factors', ('sharpness',)),
+    }
+    decision_factors = nested_scores(
+        judgment,
+        'decision_factors',
+        ('purchase_confusion', 'choice_cost', 'evidence', 'actionability', 'save_value'),
+    )
+    experience_factors = nested_scores(
+        judgment,
+        'experience_factors',
+        ('reusability', 'step_clarity', 'operability', 'case_transfer', 'long_tail'),
+    )
+    return {
+        'hot_take': {
+            'score': score_from_factors(hot_take_factors, LINE_WEIGHTS['hot_take']),
+            'factors': hot_take_factors,
+            'weights': LINE_WEIGHTS['hot_take'],
+        },
+        'decision': {
+            'score': score_from_factors(decision_factors, LINE_WEIGHTS['decision']),
+            'factors': decision_factors,
+            'weights': LINE_WEIGHTS['decision'],
+        },
+        'experience': {
+            'score': score_from_factors(experience_factors, LINE_WEIGHTS['experience']),
+            'factors': experience_factors,
+            'weights': LINE_WEIGHTS['experience'],
+        },
+    }
+
+
+def choose_primary_line(line_scores: dict[str, dict[str, Any]]) -> str:
+    return max(
+        line_scores,
+        key=lambda line: (int(line_scores[line]['score']), LINE_TIE_PRIORITY[line]),
+    )
+
+
+def factor_summary(line: str, factors: dict[str, int]) -> str:
+    if line == 'hot_take':
+        names = ('heat', 'freshness', 'discussion', 'emotion', 'sharpness')
+    elif line == 'decision':
+        names = ('purchase_confusion', 'choice_cost', 'evidence', 'actionability', 'save_value')
+    else:
+        names = ('reusability', 'step_clarity', 'operability', 'case_transfer', 'long_tail')
+    return '、'.join(f'{name}={factors[name]}' for name in names if name in factors)
+
+
+def computed_line_reason(primary_line: str, line_scores: dict[str, dict[str, Any]]) -> str:
+    score = int(line_scores[primary_line]['score'])
+    factors = line_scores[primary_line]['factors']
+    return f"按三线权重复算，{CONTENT_LINES[primary_line]}得分最高（{score}/100），关键因子是 {factor_summary(primary_line, factors)}。"
+
+
+def computed_line_tradeoff(primary_line: str, line_scores: dict[str, dict[str, Any]]) -> str:
+    ordered = sorted(
+        line_scores.items(),
+        key=lambda pair: (int(pair[1]['score']), LINE_TIE_PRIORITY[pair[0]]),
+        reverse=True,
+    )
+    if len(ordered) < 2:
+        return '只有一条内容线完成评分，按最高分进入主线。'
+    second_line, second_data = ordered[1]
+    primary_score = int(line_scores[primary_line]['score'])
+    second_score = int(second_data['score'])
+    gap = primary_score - second_score
+    if gap <= 5:
+        return f"与{CONTENT_LINES[second_line]}只差 {gap} 分，主线按得分和并列优先级确定，副线可作为备选角度。"
+    return f"比{CONTENT_LINES[second_line]}高 {gap} 分，说明这条选题当前最适合按{CONTENT_LINES[primary_line]}生产。"
+
+
 def valid_judgment(judgment: dict[str, Any]) -> bool:
     try:
-        scores_valid = all(1 <= int(judgment[name]) <= 5 for name in ('emotion_score', 'relevance_score'))
+        int_score(judgment['emotion_score'])
+        int_score(judgment['relevance_score'])
+        int_score(judgment.get('asset_value'))
+        nested_scores(judgment, 'hot_take_factors', ('sharpness',))
+        nested_scores(
+            judgment,
+            'decision_factors',
+            ('purchase_confusion', 'choice_cost', 'evidence', 'actionability', 'save_value'),
+        )
+        nested_scores(
+            judgment,
+            'experience_factors',
+            ('reusability', 'step_clarity', 'operability', 'case_transfer', 'long_tail'),
+        )
     except (KeyError, TypeError, ValueError):
         return False
-    return scores_valid and all(str(judgment.get(name) or '').strip() for name in REQUIRED_TEXT)
+    content_line = normalize_line(judgment.get('content_line'))
+    line_reasons = judgment.get('line_reasons') or {}
+    return (
+        content_line in CONTENT_LINES
+        and all(str(judgment.get(name) or '').strip() for name in REQUIRED_TEXT)
+        and isinstance(line_reasons, dict)
+        and all(str(line_reasons.get(line) or '').strip() for line in CONTENT_LINES)
+    )
 
 
 def finalize(candidates_payload: dict[str, Any], judgments_payload: dict[str, Any], maximum: int = 10) -> dict[str, Any]:
@@ -58,30 +216,44 @@ def finalize(candidates_payload: dict[str, Any], judgments_payload: dict[str, An
         judgment = by_id.get(str(candidate.get('candidate_id')))
         if not judgment:
             continue
-        emotion = int(judgment['emotion_score'])
-        relevance = int(judgment['relevance_score'])
-        dimensions = {
-            'heat': int(candidate['heat_score']),
-            'freshness': int(candidate['freshness_score']),
-            'discussion': int(candidate['discussion_score']),
-            'emotion': emotion,
-            'relevance': relevance,
-        }
-        total = sum(dimensions.values()) * 2
+        line_scores = compute_line_scores(candidate, judgment)
+        primary_line = choose_primary_line(line_scores)
+        primary_score = int(line_scores[primary_line]['score'])
+        secondary_lines = [
+            line for line, data in sorted(
+                line_scores.items(),
+                key=lambda pair: int(pair[1]['score']),
+                reverse=True,
+            )
+            if line != primary_line and int(data['score']) >= 70 and primary_score - int(data['score']) <= 15
+        ]
+        line_reasons = judgment.get('line_reasons') or {}
         merged.append({
             **candidate,
             **{key: judgment[key] for key in REQUIRED_TEXT},
+            'content_line': primary_line,
+            'content_line_label': CONTENT_LINES[primary_line],
+            'model_content_line': normalize_line(judgment.get('content_line')),
+            'secondary_content_lines': secondary_lines,
+            'line_scores': line_scores,
+            'line_reason': computed_line_reason(primary_line, line_scores),
+            'model_line_reason': line_reasons[primary_line],
+            'line_tradeoff': computed_line_tradeoff(primary_line, line_scores),
+            'model_line_tradeoff': judgment.get('line_tradeoff') or '',
+            'asset_value': int(judgment.get('asset_value') or 0),
+            'relevance_score': int(judgment.get('relevance_score') or 0),
             'six_question_pass_count': int(judgment.get('six_question_pass_count') or 0),
-            'dimensions': dimensions,
-            'writing_value_score': total,
-            'level': level_for(total),
+            'dimensions': line_scores[primary_line]['factors'],
+            'writing_value_score': primary_score,
+            'score_scale': 100,
+            'level': level_for(primary_score),
         })
 
     merged.sort(key=lambda item: (item['writing_value_score'], item['platform_count']), reverse=True)
     formal = [
         item for item in merged
-        if item['writing_value_score'] >= 30
-        and item['dimensions']['relevance'] >= 3
+        if item['writing_value_score'] >= 60
+        and item['relevance_score'] >= 3
         and item['recommended_angle'].strip() != '不适用'
     ]
     target = min(maximum, len(formal))
@@ -119,7 +291,7 @@ def finalize(candidates_payload: dict[str, Any], judgments_payload: dict[str, An
         selected.remove(lowest_auto)
     selected.sort(key=lambda item: (item['writing_value_score'], item['platform_count']), reverse=True)
 
-    reserve = [item for item in merged if item not in selected and item['writing_value_score'] >= 20][:3]
+    reserve = [item for item in merged if item not in selected and item['writing_value_score'] >= 45][:3]
     return {
         'schema_version': 2,
         'run_id': candidate_run_id,
@@ -128,6 +300,10 @@ def finalize(candidates_payload: dict[str, Any], judgments_payload: dict[str, An
             'valid_model_judgments': len(by_id),
             'formal_recommendation_count': len(selected),
             'minimum_met': len(selected) >= 5,
+            'content_line_counts': {
+                line: sum(item.get('content_line') == line for item in selected)
+                for line in CONTENT_LINES
+            },
         },
         'recommendations': selected,
         'reserve': reserve,
@@ -143,24 +319,35 @@ def render_markdown(result: dict[str, Any]) -> str:
         lines.append('结论：本轮没有完成语义判断的合格选题。')
     if result.get('contract_error'):
         lines.extend(['', f"> 契约校验失败：{result['contract_error']}。拒绝复用上一轮模型判断。"])
-    lines.extend(['', f"正式推荐 {len(recommendations)} 条：", ''])
-    for index, item in enumerate(recommendations, 1):
-        d = item['dimensions']
-        lines.extend([
-            f"## {index}. {item['title']} — {item['writing_value_score']}/50 — {item['level']}",
-            '',
-            f"- 五维：全网热度 {d['heat']}，时效性 {d['freshness']}，讨论热度 {d['discussion']}，情绪强度 {d['emotion']}，内容关联度 {d['relevance']}",
-            f"- 核心判断：{item['core_judgment']}",
-            f"- 推荐角度：{item['recommended_angle']}",
-            f"- 反面理由：{item['risk']}",
-            f"- 读者起点：{item['reader_start']}",
-            f"- 原文：{item['url']}",
-            '',
-        ])
+    lines.extend(['', f"正式推荐 {len(recommendations)} 条，按内容线分组：", ''])
+    for line, label in CONTENT_LINES.items():
+        group = [item for item in recommendations if item.get('content_line') == line]
+        lines.extend([f"## {label}（{len(group)} 条）", ''])
+        if not group:
+            lines.extend(['- 本轮没有足够强的候选题。', ''])
+            continue
+        for index, item in enumerate(group, 1):
+            d = item['dimensions']
+            lines.extend([
+                f"### {index}. {item['title']} — {item['writing_value_score']}/100 — {item['level']}",
+                '',
+                f"- 三线得分：热点观点 {item['line_scores']['hot_take']['score']}，消费决策 {item['line_scores']['decision']['score']}，经验沉淀 {item['line_scores']['experience']['score']}",
+                f"- 主线因子：{', '.join(f'{key}={value}' for key, value in d.items())}",
+                f"- 内容线判断：{item['content_line_label']}，{item['line_reason']}",
+                f"- 路线取舍：{item.get('line_tradeoff') or '主线得分最高，副线仅作备选。'}",
+                f"- 账号资产价值：{item['asset_value']}/5",
+                f"- 核心判断：{item['core_judgment']}",
+                f"- 推荐角度：{item['recommended_angle']}",
+                f"- 反面理由：{item['risk']}",
+                f"- 读者起点：{item['reader_start']}",
+                f"- 下一步要求：{item['next_stage_requirement']}",
+                f"- 原文：{item['url']}",
+                '',
+            ])
     if result['reserve']:
         lines.extend(['## 储备', ''])
         for item in result['reserve']:
-            lines.append(f"- {item['title']} — {item['writing_value_score']}/50 — {item['level']}")
+            lines.append(f"- {item['title']} — {item['writing_value_score']}/100 — {item['level']}")
         lines.append('')
     if not result['stats']['minimum_met']:
         lines.append(f"> 本轮完整合格候选不足 5 条，实际 {len(recommendations)} 条；未用旧题或不完整判断凑数。")

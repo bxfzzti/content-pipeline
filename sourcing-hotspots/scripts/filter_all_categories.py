@@ -17,6 +17,7 @@ domestic_file = sys.argv[1] if len(sys.argv) > 1 else "/tmp/hotspots.json"
 intl_file = sys.argv[2] if len(sys.argv) > 2 else None
 home_file = sys.argv[3] if len(sys.argv) > 3 else None
 output_dir = Path(sys.argv[4]) if len(sys.argv) > 4 else Path('/tmp/article-pipeline')
+car_search_file = sys.argv[5] if len(sys.argv) > 5 else None
 
 # ===== 噪音词（匹配即丢弃）=====
 NOISE_WORDS = [
@@ -110,6 +111,7 @@ HOME_CONTEXT = r'家电|家居|厨卫|卫浴|清洁|净化|净水|空调|冰箱|
 ROUNDUP_SOURCES = {'geekpark', '36Kr', '36kr', 'ifanr', '爱范儿'}
 
 def is_noise(title):
+    title = str(title or '')
     t = title.lower()
     return any(p.lower() in t for p in NOISE_WORDS)
 
@@ -132,6 +134,9 @@ def classify_cross_brand(text, brand):
     return None  # 无法归类 → 丢弃
 
 def classify(title, desc, source):
+    title = str(title or '')
+    desc = str(desc or '')
+    source = str(source or '')
     # 关注领域必须由标题本身命中。聚合源和长摘要经常同时包含
     # 多条新闻，用摘要匹配会把社会新闻误分到汽车/3C/家居。
     text = title
@@ -247,7 +252,12 @@ def normalize_time(dt):
 def freshness_fields(dt, evidence_type):
     dt = normalize_time(dt)
     if dt is None:
-        status = '实时热榜（发布时间未提供）' if evidence_type == 'hot_rank' else '时间未核验'
+        if evidence_type == 'hot_rank':
+            status = '实时热榜（发布时间未提供）'
+        elif evidence_type == 'search_index':
+            status = '搜索索引补链（需点开核验）'
+        else:
+            status = '时间未核验'
         return {
             'published_at': None,
             'age_hours': None,
@@ -277,8 +287,15 @@ def apply_recommendation_gate(item):
     age_hours = item.get('age_hours')
     evidence_type = item.get('evidence_type')
     if age_hours is None:
-        passed = evidence_type == 'hot_rank' and bool(item.get('freshness_verified'))
-        reason = '当前实时热榜' if passed else '发布时间未核验'
+        if evidence_type == 'hot_rank' and bool(item.get('freshness_verified')):
+            passed = True
+            reason = '当前实时热榜'
+        elif evidence_type == 'search_index':
+            passed = True
+            reason = '垂直站点搜索补链，发布前必须点开原文核验时效'
+        else:
+            passed = False
+            reason = '发布时间未核验'
     elif age_hours <= 48:
         passed = True
         reason = '48小时内'
@@ -315,8 +332,8 @@ for p in dom_raw.get('data', []):
                 dom_skipped_old += 1
                 continue
         dom.append({
-            'title': it.get('title',''),
-            'desc': it.get('desc',''),
+            'title': str(it.get('title') or ''),
+            'desc': str(it.get('desc') or ''),
             'source': src,
             'url': it.get('url') or it.get('mobileUrl') or '',
             'rank': rank,
@@ -339,7 +356,7 @@ if intl_file:
         for rank, it in enumerate(raw, 1):
             dt = parse_rss_time(it.get('pubDate', ''))
             if dt and dt < cutoff: continue
-            intl.append({'title': it.get('title',''), 'desc': it.get('desc','')[:300], 'source': it.get('source','RSS'), 'url': it.get('link') or it.get('url') or '', 'rank': rank, **freshness_fields(dt, 'rss')})
+            intl.append({'title': str(it.get('title') or ''), 'desc': str(it.get('desc') or '')[:300], 'source': it.get('source','RSS'), 'url': it.get('link') or it.get('url') or '', 'rank': rank, **freshness_fields(dt, 'rss')})
     except Exception as e:
         print(f"[WARN] 国际RSS: {e}", file=sys.stderr)
 
@@ -354,9 +371,33 @@ if home_file:
         for rank, it in enumerate(raw, 1):
             dt = parse_rss_time(it.get('pubDate', ''))
             if dt and dt < cutoff: continue
-            home_rss.append({'title': it.get('title',''), 'desc': it.get('desc','')[:300], 'source': it.get('source','RSS-家居'), 'url': it.get('link') or it.get('url') or '', 'rank': rank, **freshness_fields(dt, 'rss')})
+            home_rss.append({'title': str(it.get('title') or ''), 'desc': str(it.get('desc') or '')[:300], 'source': it.get('source','RSS-家居'), 'url': it.get('link') or it.get('url') or '', 'rank': rank, **freshness_fields(dt, 'rss')})
     except Exception as e:
         print(f"[WARN] 家居RSS: {e}", file=sys.stderr)
+
+# 汽车垂直站点搜索补链（不作为全网热度来源，只进入关注方向）
+car_search = []
+if car_search_file:
+    try:
+        with open(car_search_file) as f:
+            raw = json.load(f)
+        for rank, it in enumerate((raw.get('results') or [])[:80], 1):
+            title = it.get('title', '').strip()
+            if not title:
+                continue
+            car_search.append({
+                'title': title,
+                'desc': it.get('snippet', '')[:300],
+                'source': it.get('source') or '汽车垂直搜索',
+                'url': it.get('url') or '',
+                'rank': rank,
+                'search_query': it.get('query', ''),
+                'site': it.get('site', ''),
+                'intent': it.get('intent', '汽车垂直搜索补链'),
+                **freshness_fields(None, 'search_index'),
+            })
+    except Exception as e:
+        print(f"[WARN] 汽车垂直搜索: {e}", file=sys.stderr)
 
 
 # ===== 运行 =====
@@ -374,6 +415,12 @@ for src_list in [dom, intl, home_rss]:
         elif not c:
             # 未归类但通过了噪音过滤 → 保留用于溢出检测
             unclassified.append(it)
+
+for it in car_search:
+    if it['title'] in seen:
+        continue
+    seen.add(it['title'])
+    cat['auto'].append({**it, 'cat': 'auto', 'brands': [], 'signals': [it.get('intent', '搜索补链')]})
 
 # ===== 去重（标题高度重叠的条目只保留第一条）=====
 def title_words(t):
@@ -570,7 +617,7 @@ if unclassified:
 
 # ===== 输出 =====
 total = sum(len(v) for v in cat.values())
-print(f"## 筛选结果（国内{'+' + str(len(intl)) + '国际' if intl else ''}{'+' + str(len(home_rss)) + '家居RSS' if home_rss else ''}）")
+print(f"## 筛选结果（国内{'+' + str(len(intl)) + '国际' if intl else ''}{'+' + str(len(home_rss)) + '家居RSS' if home_rss else ''}{'+' + str(len(car_search)) + '汽车垂直搜索' if car_search else ''}）")
 print(f"  汽车:{len(cat['auto'])} | 3C:{len(cat['3c'])} | AI:{len(cat['ai'])} | 家居:{len(cat['home'])} | 总计:{total}")
 
 print("\n# 第一部分：全网热点")
@@ -595,7 +642,7 @@ for c, label in [('auto','汽车媒体'), ('3c','3C 数码'), ('home','智能家
 for c_name in cat:
     for item in cat[c_name]:
         platforms = set()
-        for src_item in all_sources:
+        for src_item in all_sources + car_search:
             if same_topic_event(item['title'], src_item['title']):
                 platforms.add(src_item['source'])
         item['platform_count'] = max(len(platforms), 1)

@@ -31,6 +31,8 @@ def test_prepare_rejects_stale_items_and_calculates_fixed_scores():
     assert candidate['freshness_score'] == 5
     assert candidate['discussion_score'] == 5
     assert candidate['fixed_subtotal'] == 30
+    assert candidate['candidate_type'] == 'hotspot'
+    assert candidate['default_content_line'] in {'hot_take', 'decision', 'experience'}
 
 
 def test_prepare_deduplicates_same_url():
@@ -87,3 +89,111 @@ def test_prepare_merges_same_model_even_when_other_numbers_differ():
     }
     result = prepare(payload)
     assert result['stats']['eligible_after_dedup'] == 1
+
+
+def test_prepare_allows_search_index_with_lower_freshness_score():
+    search_item = {
+        **item('理想 L6 车主口碑集中出现', age=None, platforms=1, url='https://www.autohome.com.cn/a'),
+        'freshness_status': '搜索索引补链（需点开核验）',
+        'evidence_type': 'search_index',
+    }
+    payload = {
+        'full_web': {},
+        'focus': {
+            'auto': [search_item],
+            '3c': [],
+            'smart_home': [],
+        },
+    }
+
+    result = prepare(payload)
+
+    assert result['stats']['freshness_rejected'] == 0
+    assert result['candidates'][0]['freshness_score'] == 3
+
+
+def test_prepare_adds_product_experience_candidates_to_decision_line():
+    payload = {'full_web': {}, 'focus': {'auto': [], '3c': [], 'smart_home': []}}
+    products = [
+        {
+            'title': 'Mate60 Pro第三方充电器实测差距曝光',
+            'link': 'https://post.smzdm.com/p/example/',
+            'platform': '什么值得买',
+            'content_type': '体验/评测',
+            'creative_score': 88,
+            '_keyword': '充电器',
+            'comment_count': 10,
+            'collection_count': 40,
+            'up_count': 60,
+        }
+    ]
+    result = prepare(payload, product_items=products)
+    candidate = result['candidates'][0]
+    assert candidate['candidate_type'] == 'product_experience'
+    assert candidate['default_content_line'] == 'decision'
+    assert candidate['url'] == 'https://post.smzdm.com/p/example/'
+    assert result['stats']['product_candidate_count'] == 1
+
+
+def test_prepare_routes_auto_product_news_to_decision_line():
+    payload = {
+        'full_web': {},
+        'focus': {
+            'auto': [item('新车预售：25.99万增程SUV对比理想L6怎么选', age=2, platforms=4, url='https://car/product')],
+            '3c': [],
+            'smart_home': [],
+        },
+    }
+    result = prepare(payload)
+    assert result['candidates'][0]['default_content_line'] == 'decision'
+
+
+def test_prepare_keeps_auto_company_finance_as_hot_take():
+    payload = {
+        'full_web': {},
+        'focus': {
+            'auto': [item('营收下滑，中国销量下跌，宝马汽车利润率跌至3.6%', age=2, platforms=4, url='https://car/finance')],
+            '3c': [],
+            'smart_home': [],
+        },
+    }
+    result = prepare(payload)
+    assert result['candidates'][0]['default_content_line'] == 'hot_take'
+
+
+def test_prepare_routes_auto_decision_model_to_experience_line():
+    payload = {
+        'full_web': {},
+        'focus': {
+            'auto': [item('家庭用户买车攻略：增程和纯电到底怎么判断', age=2, platforms=4, url='https://car/experience')],
+            '3c': [],
+            'smart_home': [],
+        },
+    }
+    result = prepare(payload)
+    assert result['candidates'][0]['default_content_line'] == 'experience'
+
+
+def test_prepare_reserves_slots_for_product_experience_when_hotspots_are_full():
+    payload = {
+        'full_web': {
+            'technology_ai': [item(f'AI热点{i}', age=2, platforms=5, url=f'https://ai/{i}') for i in range(4)],
+            'finance_policy': [item(f'财经热点{i}', age=2, platforms=5, url=f'https://finance/{i}') for i in range(4)],
+            'sports': [item(f'体育热点{i}', age=2, platforms=5, url=f'https://sports/{i}') for i in range(4)],
+            'entertainment': [item(f'文娱热点{i}', age=2, platforms=5, url=f'https://fun/{i}') for i in range(4)],
+        },
+        'focus': {'auto': [], '3c': [], 'smart_home': []},
+    }
+    products = [
+        {
+            'title': f'产品体验{i}',
+            'link': f'https://post.smzdm.com/p/{i}/',
+            'platform': '什么值得买',
+            'content_type': '体验/评测',
+            'creative_score': 88,
+        }
+        for i in range(3)
+    ]
+    result = prepare(payload, limit=8, product_items=products)
+    assert len(result['candidates']) == 8
+    assert result['stats']['product_candidate_count'] >= 1

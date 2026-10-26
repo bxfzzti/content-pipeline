@@ -67,7 +67,7 @@
 ## 选题[N]: [一句话描述]
 
 hotness_score: XX/100（来自 sourcing-hotspots，仅表示热点强度）
-writing_value_score: XX/50（筛选Agent评分，仅表示写作价值）
+writing_value_score: XX/100（主线得分，由三线并行评分模型复算）
 - 全网热度: X/5（[判断依据]）
 - 时效性: X/5（[判断依据]）
 - 讨论热度: X/5（[判断依据]）
@@ -100,7 +100,7 @@ writing_value_score: XX/50（筛选Agent评分，仅表示写作价值）
 
 **口径约束：**
 - `hotness_score` 是 sourcing 阶段的 0-100 分，不参与 S/A/B 直接分级。
-- `writing_value_score` 是 screening 阶段的 0-50 分，是推荐排序主依据。
+- `writing_value_score` 是 screening 阶段的 0-100 主线得分，是推荐排序主依据。
 - 不再使用 `XX/40分`、`L1-L4` 等旧字段。
 
 ---
